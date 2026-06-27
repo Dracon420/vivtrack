@@ -12,6 +12,10 @@ interface UIState {
   setWeightUnit: (unit: 'g' | 'oz') => void
   currency: string
   setCurrency: (currency: string) => void
+  tempUnit: 'C' | 'F'
+  setTempUnit: (unit: 'C' | 'F') => void
+  measurementUnit: 'cm' | 'in'
+  setMeasurementUnit: (unit: 'cm' | 'in') => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -25,6 +29,10 @@ export const useUIStore = create<UIState>()(
       setWeightUnit: (unit) => set({ weightUnit: unit }),
       currency: 'USD',
       setCurrency: (currency) => set({ currency }),
+      tempUnit: 'C',
+      setTempUnit: (unit) => set({ tempUnit: unit }),
+      measurementUnit: 'cm',
+      setMeasurementUnit: (unit) => set({ measurementUnit: unit }),
     }),
     { name: 'vivtrack-ui' }
   )

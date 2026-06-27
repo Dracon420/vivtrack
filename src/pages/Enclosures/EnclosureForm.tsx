@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { addEnclosure } from '@/db/hooks/useEnclosures'
+import { useUIStore } from '@/store/uiStore'
+import { inToCm, fToC } from '@/utils/units'
 import { useState } from 'react'
 
 const schema = z.object({
@@ -24,26 +26,30 @@ type FormValues = z.infer<typeof schema>
 export default function EnclosureForm() {
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
+  const { measurementUnit, tempUnit } = useUIStore()
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { humidityMin: 40, humidityMax: 60 },
   })
 
+  const toCm = (v: number) => measurementUnit === 'in' ? inToCm(v) : v
+  const toC = (v: number) => tempUnit === 'F' ? fToC(v) : v
+
   const onSubmit = async (data: FormValues) => {
     setSaving(true)
     try {
       const zones = []
       if (data.baskingMin && data.baskingMax) {
-        zones.push({ name: 'Basking', targetMin: data.baskingMin, targetMax: data.baskingMax })
+        zones.push({ name: 'Basking', targetMin: toC(data.baskingMin), targetMax: toC(data.baskingMax) })
       }
       if (data.ambientMin && data.ambientMax) {
-        zones.push({ name: 'Ambient', targetMin: data.ambientMin, targetMax: data.ambientMax })
+        zones.push({ name: 'Ambient', targetMin: toC(data.ambientMin), targetMax: toC(data.ambientMax) })
       }
 
       const enc = await addEnclosure({
         name: data.name,
-        dimensionsLWHcm: [data.lengthCm, data.widthCm, data.heightCm],
+        dimensionsLWHcm: [toCm(data.lengthCm), toCm(data.widthCm), toCm(data.heightCm)],
         substrate: [],
         bulbs: [],
         temperatureZones: zones,
@@ -72,7 +78,7 @@ export default function EnclosureForm() {
         </div>
 
         <div>
-          <label className="label">Dimensions (cm)</label>
+          <label className="label">Dimensions ({measurementUnit})</label>
           <div className="grid grid-cols-3 gap-2">
             <div>
               <input {...register('lengthCm')} type="number" placeholder="Length" className="input-field text-center" />
@@ -98,7 +104,7 @@ export default function EnclosureForm() {
         </div>
 
         <div>
-          <label className="label">Basking Zone (°C)</label>
+          <label className="label">Basking Zone (°{tempUnit})</label>
           <div className="grid grid-cols-2 gap-2">
             <input {...register('baskingMin')} type="number" placeholder="Min" className="input-field" />
             <input {...register('baskingMax')} type="number" placeholder="Max" className="input-field" />
@@ -106,7 +112,7 @@ export default function EnclosureForm() {
         </div>
 
         <div>
-          <label className="label">Ambient Zone (°C)</label>
+          <label className="label">Ambient Zone (°{tempUnit})</label>
           <div className="grid grid-cols-2 gap-2">
             <input {...register('ambientMin')} type="number" placeholder="Min" className="input-field" />
             <input {...register('ambientMax')} type="number" placeholder="Max" className="input-field" />

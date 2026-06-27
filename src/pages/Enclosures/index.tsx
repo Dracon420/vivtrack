@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, AlertTriangle, Thermometer, Pencil } from 'lucide-react'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { useAnimals } from '@/db/hooks/useAnimals'
+import { useUIStore } from '@/store/uiStore'
+import { displayDims, displayTemp } from '@/utils/units'
 import { daysAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { Enclosure } from '@/types'
@@ -25,7 +27,8 @@ function bulbWarnings(enc: Enclosure): number {
 function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; animalName?: string; onClick: () => void; onEdit: () => void }) {
   const clean = daysSinceLabel(enc.lastSubstrateClean)
   const warnings = bulbWarnings(enc)
-  const dims = `${enc.dimensionsLWHcm[0]}×${enc.dimensionsLWHcm[1]}×${enc.dimensionsLWHcm[2]}cm`
+  const { measurementUnit, tempUnit } = useUIStore()
+  const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
 
   return (
     <div
@@ -65,7 +68,7 @@ function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; a
             <Thermometer size={12} className="text-gray-600 mt-0.5" />
             <div>
               <p className="text-gray-600 mb-0.5">Basking</p>
-              <p className="font-medium text-gray-300">{enc.temperatureZones[0].targetMax}°C</p>
+              <p className="font-medium text-gray-300">{displayTemp(enc.temperatureZones[0].targetMax, tempUnit)}</p>
             </div>
           </div>
         )}

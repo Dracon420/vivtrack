@@ -1,4 +1,4 @@
-import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User } from 'lucide-react'
+import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User, Thermometer, Ruler } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/contexts/AuthContext'
@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 export default function Settings() {
   const { theme, setTheme } = useTheme()
-  const { weightUnit, setWeightUnit, currency, setCurrency } = useUIStore()
+  const { weightUnit, setWeightUnit, currency, setCurrency, tempUnit, setTempUnit, measurementUnit, setMeasurementUnit } = useUIStore()
   const { user, signOut } = useAuth()
 
   const themes = [
@@ -76,6 +76,54 @@ export default function Settings() {
                 className={cn(
                   'flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors',
                   weightUnit === u
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                    : 'border-gray-700 bg-gray-800 text-gray-500 hover:bg-gray-700'
+                )}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Temperature unit */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Thermometer size={16} className="text-gray-500" />
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Temperature Unit</p>
+          </div>
+          <div className="flex gap-2">
+            {(['C', 'F'] as const).map(u => (
+              <button
+                key={u}
+                onClick={() => setTempUnit(u)}
+                className={cn(
+                  'flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors',
+                  tempUnit === u
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                    : 'border-gray-700 bg-gray-800 text-gray-500 hover:bg-gray-700'
+                )}
+              >
+                °{u}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Measurement unit */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Ruler size={16} className="text-gray-500" />
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Enclosure Dimensions</p>
+          </div>
+          <div className="flex gap-2">
+            {(['cm', 'in'] as const).map(u => (
+              <button
+                key={u}
+                onClick={() => setMeasurementUnit(u)}
+                className={cn(
+                  'flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors',
+                  measurementUnit === u
                     ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
                     : 'border-gray-700 bg-gray-800 text-gray-500 hover:bg-gray-700'
                 )}

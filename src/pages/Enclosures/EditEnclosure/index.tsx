@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useEnclosure, updateEnclosure, deleteEnclosure } from '@/db/hooks/useEnclosures'
+import { useUIStore } from '@/store/uiStore'
+import { cmToIn, inToCm, cToF, fToC } from '@/utils/units'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -30,6 +32,11 @@ export default function EditEnclosure() {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [seeded, setSeeded] = useState(false)
+  const { measurementUnit, tempUnit } = useUIStore()
+  const fromCm = (v: number) => measurementUnit === 'in' ? cmToIn(v) : v
+  const fromC = (v: number) => tempUnit === 'F' ? cToF(v) : v
+  const toCm = (v: number) => measurementUnit === 'in' ? inToCm(v) : v
+  const toC = (v: number) => tempUnit === 'F' ? fToC(v) : v
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
@@ -42,15 +49,15 @@ export default function EditEnclosure() {
     const ambient = enclosure.temperatureZones.find(z => z.name === 'Ambient')
     reset({
       name: enclosure.name,
-      lengthCm: enclosure.dimensionsLWHcm[0],
-      widthCm: enclosure.dimensionsLWHcm[1],
-      heightCm: enclosure.dimensionsLWHcm[2],
+      lengthCm: fromCm(enclosure.dimensionsLWHcm[0]),
+      widthCm: fromCm(enclosure.dimensionsLWHcm[1]),
+      heightCm: fromCm(enclosure.dimensionsLWHcm[2]),
       humidityMin: enclosure.humidityMin,
       humidityMax: enclosure.humidityMax,
-      baskingMin: basking?.targetMin,
-      baskingMax: basking?.targetMax,
-      ambientMin: ambient?.targetMin,
-      ambientMax: ambient?.targetMax,
+      baskingMin: basking ? fromC(basking.targetMin) : undefined,
+      baskingMax: basking ? fromC(basking.targetMax) : undefined,
+      ambientMin: ambient ? fromC(ambient.targetMin) : undefined,
+      ambientMax: ambient ? fromC(ambient.targetMax) : undefined,
       notes: enclosure.notes ?? '',
     })
     setSeeded(true)
@@ -62,14 +69,14 @@ export default function EditEnclosure() {
     try {
       const zones = []
       if (data.baskingMin && data.baskingMax) {
-        zones.push({ name: 'Basking', targetMin: data.baskingMin, targetMax: data.baskingMax })
+        zones.push({ name: 'Basking', targetMin: toC(data.baskingMin), targetMax: toC(data.baskingMax) })
       }
       if (data.ambientMin && data.ambientMax) {
-        zones.push({ name: 'Ambient', targetMin: data.ambientMin, targetMax: data.ambientMax })
+        zones.push({ name: 'Ambient', targetMin: toC(data.ambientMin), targetMax: toC(data.ambientMax) })
       }
       await updateEnclosure(id, {
         name: data.name,
-        dimensionsLWHcm: [data.lengthCm, data.widthCm, data.heightCm],
+        dimensionsLWHcm: [toCm(data.lengthCm), toCm(data.widthCm), toCm(data.heightCm)],
         temperatureZones: zones,
         humidityMin: data.humidityMin,
         humidityMax: data.humidityMax,
@@ -110,7 +117,7 @@ export default function EditEnclosure() {
         </div>
 
         <div>
-          <label className="label">Dimensions (cm)</label>
+          <label className="label">Dimensions ({measurementUnit})</label>
           <div className="grid grid-cols-3 gap-2">
             <div>
               <input {...register('lengthCm')} type="number" placeholder="Length" className="input-field text-center" />
@@ -136,7 +143,7 @@ export default function EditEnclosure() {
         </div>
 
         <div>
-          <label className="label">Basking Zone (°C)</label>
+          <label className="label">Basking Zone (°{tempUnit})</label>
           <div className="grid grid-cols-2 gap-2">
             <input {...register('baskingMin')} type="number" placeholder="Min" className="input-field" />
             <input {...register('baskingMax')} type="number" placeholder="Max" className="input-field" />
@@ -144,7 +151,7 @@ export default function EditEnclosure() {
         </div>
 
         <div>
-          <label className="label">Ambient Zone (°C)</label>
+          <label className="label">Ambient Zone (°{tempUnit})</label>
           <div className="grid grid-cols-2 gap-2">
             <input {...register('ambientMin')} type="number" placeholder="Min" className="input-field" />
             <input {...register('ambientMax')} type="number" placeholder="Max" className="input-field" />

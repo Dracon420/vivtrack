@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus, AlertTriangle, Printer, Zap, Layers } from 'lucide-react'
 import { useEnclosure, updateEnclosure } from '@/db/hooks/useEnclosures'
 import { useAnimals } from '@/db/hooks/useAnimals'
+import { useUIStore } from '@/store/uiStore'
+import { displayDims, displayTemp } from '@/utils/units'
 import { daysUntil, formatDate } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import QRCode from 'react-qr-code'
@@ -130,6 +132,7 @@ export default function EnclosureDetail() {
   const [tab, setTab] = useState<Tab>('overview')
   const [addingBulb, setAddingBulb] = useState(false)
 
+  const { measurementUnit, tempUnit } = useUIStore()
   const occupant = animals?.find(a => a.enclosureId === id)
   const qrUrl = `${window.location.origin}/scan?token=${occupant?.qrCodeToken ?? ''}`
 
@@ -145,7 +148,7 @@ export default function EnclosureDetail() {
 
   if (!enc) return null
 
-  const dims = `${enc.dimensionsLWHcm[0]} × ${enc.dimensionsLWHcm[1]} × ${enc.dimensionsLWHcm[2]} cm`
+  const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
 
   return (
     <div className="min-h-full pb-24">
@@ -189,7 +192,7 @@ export default function EnclosureDetail() {
                 {enc.temperatureZones.map(z => (
                   <div key={z.name}>
                     <p className="text-gray-500 text-xs mb-0.5">{z.name}</p>
-                    <p className="font-semibold text-gray-100">{z.targetMin}–{z.targetMax}°C</p>
+                    <p className="font-semibold text-gray-100">{displayTemp(z.targetMin, tempUnit)}–{displayTemp(z.targetMax, tempUnit)}</p>
                   </div>
                 ))}
               </div>
