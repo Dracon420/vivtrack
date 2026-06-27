@@ -14,7 +14,8 @@ export type CareEventType =
   | 'egg_turning'
   | 'temperature_check'
   | 'humidity_check'
-  | 'photo';
+  | 'photo'
+  | 'soil_rehydration';
 
 export type FeedingResult = 'accepted' | 'refused' | 'partial' | 'regurgitated';
 export type ShedResult = 'complete' | 'partial' | 'stuck_shed' | 'assisted';

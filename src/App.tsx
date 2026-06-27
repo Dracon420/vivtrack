@@ -14,6 +14,7 @@ const EditAnimal = lazy(() => import('@/pages/Animals/EditAnimal'))
 const EnclosureList = lazy(() => import('@/pages/Enclosures'))
 const EnclosureDetail = lazy(() => import('@/pages/Enclosures/EnclosureDetail'))
 const EnclosureForm = lazy(() => import('@/pages/Enclosures/EnclosureForm'))
+const EditEnclosure = lazy(() => import('@/pages/Enclosures/EditEnclosure'))
 const Scanner = lazy(() => import('@/pages/Scanner'))
 const ScanRedirect = lazy(() => import('@/pages/Scanner/ScanRedirect'))
 const SpeciesBrowser = lazy(() => import('@/pages/SpeciesBrowser'))
@@ -79,6 +80,9 @@ function AppRoutes() {
           } />
           <Route path="enclosures/:id" element={
             <Suspense fallback={<PageLoader />}><EnclosureDetail /></Suspense>
+          } />
+          <Route path="enclosures/:id/edit" element={
+            <Suspense fallback={<PageLoader />}><EditEnclosure /></Suspense>
           } />
           <Route path="scanner" element={
             <Suspense fallback={<PageLoader />}><Scanner /></Suspense>

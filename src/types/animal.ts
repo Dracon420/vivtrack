@@ -13,6 +13,7 @@ export interface Animal {
   enclosureId?: string;
   photoIds: string[];
   primaryPhotoId?: string;
+  thumbnailBase64?: string;
   rfidTag?: string;
   qrCodeToken: string;
   status: AnimalStatus;
@@ -38,8 +39,17 @@ export interface AnimalCareSchedule {
   id: string;
   animalId: string;
   feedingIntervalDays: number;
-  mistingIntervalHours?: number;
+  // Misting (expanded)
+  mistingType?: 'manual' | 'automatic';
+  mistingScheduleType?: 'none' | 'interval' | 'times';
+  mistingInterval?: number;
+  mistingIntervalUnit?: 'hours' | 'days';
+  mistingTimes?: string[];
+  mistingIntervalHours?: number; // legacy / computed for dashboard
+  // Water
   waterChangeIntervalDays?: number;
+  // Soil
+  soilRehydrationIntervalDays?: number;
   substrateCleanIntervalDays: number;
   medicationReminders: boolean;
   quietHoursStart?: string;

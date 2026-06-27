@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, AlertTriangle, Thermometer } from 'lucide-react'
+import { Plus, AlertTriangle, Thermometer, Pencil } from 'lucide-react'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { useAnimals } from '@/db/hooks/useAnimals'
 import { daysAgo } from '@/utils/dateHelpers'
@@ -22,27 +22,35 @@ function bulbWarnings(enc: Enclosure): number {
   }).length
 }
 
-function EnclosureCard({ enc, animalName, onClick }: { enc: Enclosure; animalName?: string; onClick: () => void }) {
+function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; animalName?: string; onClick: () => void; onEdit: () => void }) {
   const clean = daysSinceLabel(enc.lastSubstrateClean)
   const warnings = bulbWarnings(enc)
   const dims = `${enc.dimensionsLWHcm[0]}×${enc.dimensionsLWHcm[1]}×${enc.dimensionsLWHcm[2]}cm`
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-[0.98]"
+      className="w-full text-left bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-[0.98] cursor-pointer"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-gray-100 truncate">{enc.name}</p>
           {animalName && <p className="text-xs text-emerald-400 mt-0.5">🐾 {animalName}</p>}
           {!animalName && <p className="text-xs text-gray-600 mt-0.5">Unoccupied</p>}
         </div>
-        {warnings > 0 && (
-          <span className="shrink-0 flex items-center gap-1 text-xs text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
-            <AlertTriangle size={12} /> {warnings} bulb{warnings > 1 ? 's' : ''}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {warnings > 0 && (
+            <span className="flex items-center gap-1 text-xs text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
+              <AlertTriangle size={12} /> {warnings} bulb{warnings > 1 ? 's' : ''}
+            </span>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); onEdit() }}
+            className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-gray-600 mb-3">{dims}</p>
@@ -66,7 +74,7 @@ function EnclosureCard({ enc, animalName, onClick }: { enc: Enclosure; animalNam
           <p className="font-medium text-gray-300">{enc.humidityMin}–{enc.humidityMax}%</p>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -112,6 +120,7 @@ export default function EnclosureList() {
               enc={enc}
               animalName={animalMap.get(enc.id)}
               onClick={() => navigate(`/enclosures/${enc.id}`)}
+              onEdit={() => navigate(`/enclosures/${enc.id}/edit`)}
             />
           ))}
         </div>

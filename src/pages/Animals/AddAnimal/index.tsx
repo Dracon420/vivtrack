@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Plus, Search, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -22,9 +22,9 @@ const infoSchema = z.object({
 })
 const scheduleSchema = z.object({
   feedingIntervalDays: z.coerce.number().min(1),
-  mistingIntervalHours: z.coerce.number().optional(),
   waterChangeIntervalDays: z.coerce.number().optional(),
   substrateCleanIntervalDays: z.coerce.number().min(1),
+  soilRehydrationIntervalDays: z.coerce.number().optional(),
 })
 
 type InfoValues = z.infer<typeof infoSchema>
@@ -66,6 +66,14 @@ export default function AddAnimal() {
   const [selectedEnclosureId, setSelectedEnclosureId] = useState<string>('')
   const [saving, setSaving] = useState(false)
 
+  // Misting state
+  const [mistingType, setMistingType] = useState<'manual' | 'automatic'>('manual')
+  const [mistingSchedule, setMistingSchedule] = useState<'none' | 'interval' | 'times'>('none')
+  const [mistingInterval, setMistingInterval] = useState('')
+  const [mistingUnit, setMistingUnit] = useState<'hours' | 'days'>('hours')
+  const [mistingTimes, setMistingTimes] = useState<string[]>([])
+  const [newTime, setNewTime] = useState('08:00')
+
   const infoForm = useForm<InfoValues>({
     resolver: zodResolver(infoSchema),
     defaultValues: { sex: 'unknown', acquisitionDate: todayISO() },
@@ -85,7 +93,9 @@ export default function AddAnimal() {
     const s = selectedSpecies
     scheduleForm.setValue('feedingIntervalDays', s.feeding.frequencyDays)
     if (s.humidity.mistingFrequency) {
-      scheduleForm.setValue('mistingIntervalHours', 12)
+      setMistingSchedule('interval')
+      setMistingInterval('12')
+      setMistingUnit('hours')
     }
     if (s.wateringNeeds === 'bowl_always' || s.wateringNeeds === 'bowl_optional') {
       scheduleForm.setValue('waterChangeIntervalDays', 7)
@@ -97,6 +107,23 @@ export default function AddAnimal() {
     s.scientificName.toLowerCase().includes(search.toLowerCase()) ||
     s.alternateNames?.some(n => n.toLowerCase().includes(search.toLowerCase()))
   )
+
+  const buildMistingConfig = () => {
+    if (mistingSchedule === 'interval' && mistingInterval) {
+      const n = parseFloat(mistingInterval)
+      return {
+        mistingType,
+        mistingScheduleType: 'interval' as const,
+        mistingInterval: n,
+        mistingIntervalUnit: mistingUnit,
+        mistingIntervalHours: mistingUnit === 'hours' ? n : n * 24,
+      }
+    }
+    if (mistingSchedule === 'times' && mistingTimes.length > 0) {
+      return { mistingType, mistingScheduleType: 'times' as const, mistingTimes }
+    }
+    return {}
+  }
 
   const onSubmit = async (info: InfoValues) => {
     const schedule = scheduleForm.getValues()
@@ -118,11 +145,12 @@ export default function AddAnimal() {
       await saveCareSchedule({
         animalId: animal.id,
         feedingIntervalDays: schedule.feedingIntervalDays,
-        mistingIntervalHours: schedule.mistingIntervalHours,
         waterChangeIntervalDays: schedule.waterChangeIntervalDays,
         substrateCleanIntervalDays: schedule.substrateCleanIntervalDays,
+        soilRehydrationIntervalDays: schedule.soilRehydrationIntervalDays,
         medicationReminders: true,
         updatedAt: new Date().toISOString(),
+        ...buildMistingConfig(),
       })
       navigate(`/animals/${animal.id}`)
     } finally {
@@ -265,14 +293,72 @@ export default function AddAnimal() {
             <input {...scheduleForm.register('feedingIntervalDays')} type="number" min="1" className="input-field" />
           </div>
 
+          {/* Misting */}
           <div>
-            <label className="label">Misting Interval (hours)</label>
-            <input {...scheduleForm.register('mistingIntervalHours')} type="number" min="1" placeholder="Leave blank if not applicable" className="input-field" />
+            <label className="label">Misting</label>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-3">
+              <div className="flex gap-2">
+                {(['manual', 'automatic'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setMistingType(t)}
+                    className={cn('flex-1 py-1.5 text-sm rounded-lg border capitalize transition-colors',
+                      mistingType === t ? 'border-emerald-500 text-emerald-300 bg-emerald-500/10' : 'border-gray-700 text-gray-500 hover:bg-gray-800'
+                    )}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                {(['none', 'interval', 'times'] as const).map(s => (
+                  <button key={s} type="button" onClick={() => setMistingSchedule(s)}
+                    className={cn('flex-1 py-1.5 text-xs rounded-lg border capitalize transition-colors',
+                      mistingSchedule === s ? 'border-blue-500 text-blue-300 bg-blue-500/10' : 'border-gray-700 text-gray-500 hover:bg-gray-800'
+                    )}>
+                    {s === 'none' ? 'No schedule' : s === 'interval' ? 'Every X' : 'Set times'}
+                  </button>
+                ))}
+              </div>
+              {mistingSchedule === 'interval' && (
+                <div className="flex gap-2">
+                  <input type="number" min="1" placeholder="e.g. 12" value={mistingInterval}
+                    onChange={e => setMistingInterval(e.target.value)} className="input-field flex-1" />
+                  <select value={mistingUnit} onChange={e => setMistingUnit(e.target.value as any)} className="input-field w-24">
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
+                </div>
+              )}
+              {mistingSchedule === 'times' && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {mistingTimes.map(t => (
+                      <span key={t} className="flex items-center gap-1 bg-blue-500/20 text-blue-300 text-xs px-2 py-1 rounded-full">
+                        {t}
+                        <button type="button" onClick={() => setMistingTimes(prev => prev.filter(x => x !== t))}><X size={10} /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)} className="input-field flex-1" />
+                    <button type="button"
+                      onClick={() => { if (newTime && !mistingTimes.includes(newTime)) { setMistingTimes(p => [...p, newTime].sort()); setNewTime('08:00') } }}
+                      className="px-3 bg-blue-500/20 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors">
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div>
-            <label className="label">Water Change Interval (days)</label>
-            <input {...scheduleForm.register('waterChangeIntervalDays')} type="number" min="1" placeholder="Leave blank if not applicable" className="input-field" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Water Change (days)</label>
+              <input {...scheduleForm.register('waterChangeIntervalDays')} type="number" min="1" placeholder="N/A" className="input-field" />
+            </div>
+            <div>
+              <label className="label">Soil Rehydration (days)</label>
+              <input {...scheduleForm.register('soilRehydrationIntervalDays')} type="number" min="1" placeholder="N/A" className="input-field" />
+            </div>
           </div>
 
           <div>
@@ -284,7 +370,7 @@ export default function AddAnimal() {
             Continue <ArrowRight size={18} />
           </button>
 
-          <style>{`.input-field { display: block; width: 100%; background: #111827; border: 1px solid #1f2937; color: #f3f4f6; border-radius: 0.75rem; padding: 0.75rem 1rem; font-size: 0.875rem; outline: none; } .label { display: block; font-size: 0.75rem; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem; }`}</style>
+          <style>{`.input-field { display: block; width: 100%; background: #111827; border: 1px solid #1f2937; color: #f3f4f6; border-radius: 0.75rem; padding: 0.75rem 1rem; font-size: 0.875rem; outline: none; } .label { display: block; font-size: 0.75rem; color: #6b7280; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem; } select.input-field option { background: #111827; }`}</style>
         </form>
       )}
 

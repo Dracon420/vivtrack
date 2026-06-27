@@ -1,11 +1,18 @@
 import { useState } from 'react'
-import { Plus, AlertTriangle, Bug, Leaf } from 'lucide-react'
+import { Plus, AlertTriangle, Bug, Leaf, Snowflake } from 'lucide-react'
 import { useFeederColonies, useCUCCultures, addFeederColony, updateFeederColony, addColonyLogEvent } from '@/db/hooks/useColonies'
 import { timeAgo, nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { FeederColony, CUCCulture } from '@/types'
 
-type Tab = 'feeders' | 'cuc'
+type Tab = 'feeders' | 'cuc' | 'frozen'
+
+const FROZEN_PRESETS = [
+  'FT Pinky', 'FT Fuzzy', 'FT Hopper',
+  'FT Small Mouse', 'FT Medium Mouse', 'FT Large Mouse',
+  'FT Small Rat', 'FT Medium Rat', 'FT Large Rat', 'FT XL Rat',
+  'FT ASF Small', 'FT ASF Adult',
+]
 
 function FeederCard({ colony, onHarvest }: { colony: FeederColony; onHarvest: (id: string, qty: number) => void }) {
   const isLow = colony.lowStockThreshold && colony.estimatedCount !== undefined && colony.estimatedCount < colony.lowStockThreshold
@@ -36,23 +43,53 @@ function FeederCard({ colony, onHarvest }: { colony: FeederColony; onHarvest: (i
 
       <div className="flex gap-2">
         <input
-          type="number"
-          min="1"
-          placeholder="Harvest qty"
-          value={harvestQty}
+          type="number" min="1" placeholder="Harvest qty" value={harvestQty}
           onChange={e => setHarvestQty(e.target.value)}
           className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
         />
         <button
-          onClick={() => {
-            if (harvestQty) { onHarvest(colony.id, parseInt(harvestQty)); setHarvestQty('') }
-          }}
+          onClick={() => { if (harvestQty) { onHarvest(colony.id, parseInt(harvestQty)); setHarvestQty('') } }}
           disabled={!harvestQty}
           className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white text-sm font-medium rounded-lg"
         >
           Harvest
         </button>
       </div>
+    </div>
+  )
+}
+
+function FrozenCard({ colony, onAdjust }: { colony: FeederColony; onAdjust: (id: string, delta: number) => void }) {
+  const isLow = colony.lowStockThreshold !== undefined && (colony.estimatedCount ?? 0) < (colony.lowStockThreshold ?? 0)
+  const qty = colony.estimatedCount ?? 0
+
+  return (
+    <div className={cn('bg-gray-900 border rounded-xl p-4', isLow ? 'border-red-500/40' : 'border-gray-800')}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-100 truncate">{colony.name}</p>
+          {isLow && (
+            <span className="inline-flex items-center gap-1 text-xs text-red-300 bg-red-500/20 px-2 py-0.5 rounded-full mt-0.5">
+              <AlertTriangle size={10} /> Low stock
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAdjust(colony.id, -1)}
+            disabled={qty <= 0}
+            className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-200 font-bold flex items-center justify-center transition-colors text-lg leading-none"
+          >−</button>
+          <span className="w-10 text-center font-bold text-gray-100 text-lg">{qty}</span>
+          <button
+            onClick={() => onAdjust(colony.id, 1)}
+            className="w-8 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-bold flex items-center justify-center transition-colors text-lg leading-none"
+          >+</button>
+        </div>
+      </div>
+      {colony.lowStockThreshold !== undefined && (
+        <p className="text-xs text-gray-600 mt-2">Alert below {colony.lowStockThreshold}</p>
+      )}
     </div>
   )
 }
@@ -118,7 +155,6 @@ function AddFeederForm({ onClose }: { onClose: () => void }) {
         <option value="waxworm">Waxworm</option>
         <option value="bsfl">BSFL</option>
         <option value="hornworm">Hornworm</option>
-        <option value="frozen_prey">Frozen Prey Stock</option>
         <option value="other">Other</option>
       </select>
       <div className="grid grid-cols-2 gap-2">
@@ -129,23 +165,86 @@ function AddFeederForm({ onClose }: { onClose: () => void }) {
         <button onClick={handleSave} disabled={!name} className="flex-1 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Save</button>
         <button onClick={onClose} className="px-3 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg">Cancel</button>
       </div>
-      <style>{`.f-input { display: block; width: 100%; background: #1f2937; border: 1px solid #374151; color: #f3f4f6; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem; outline: none; }`}</style>
+      <style>{`.f-input { display: block; width: 100%; background: #1f2937; border: 1px solid #374151; color: #f3f4f6; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem; outline: none; } select.f-input option { background: #1f2937; }`}</style>
+    </div>
+  )
+}
+
+function AddFrozenForm({ onClose }: { onClose: () => void }) {
+  const [preset, setPreset] = useState(FROZEN_PRESETS[0])
+  const [customName, setCustomName] = useState('')
+  const [qty, setQty] = useState('0')
+  const [threshold, setThreshold] = useState('5')
+  const isCustom = preset === '__custom__'
+
+  const handleSave = async () => {
+    const name = isCustom ? customName.trim() : preset
+    if (!name) return
+    await addFeederColony({
+      name,
+      species: name,
+      type: 'frozen_prey',
+      estimatedCount: parseInt(qty) || 0,
+      lowStockThreshold: threshold ? parseInt(threshold) : undefined,
+      linkedAnimalIds: [],
+      lastFedDate: undefined,
+      feedingNotes: undefined,
+    })
+    onClose()
+  }
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+      <p className="text-sm font-semibold text-gray-200">Add Frozen Item</p>
+      <select value={preset} onChange={e => setPreset(e.target.value)} className="f-input">
+        {FROZEN_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+        <option value="__custom__">Custom…</option>
+      </select>
+      {isCustom && (
+        <input value={customName} onChange={e => setCustomName(e.target.value)} type="text" placeholder="Item name" className="f-input" />
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Starting qty</p>
+          <input value={qty} onChange={e => setQty(e.target.value)} type="number" min="0" className="f-input" />
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Low stock alert</p>
+          <input value={threshold} onChange={e => setThreshold(e.target.value)} type="number" min="0" className="f-input" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSave} disabled={isCustom && !customName} className="flex-1 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Add Item</button>
+        <button onClick={onClose} className="px-3 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg">Cancel</button>
+      </div>
+      <style>{`.f-input { display: block; width: 100%; background: #1f2937; border: 1px solid #374151; color: #f3f4f6; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem; outline: none; } select.f-input option { background: #1f2937; }`}</style>
     </div>
   )
 }
 
 export default function Colonies() {
   const [tab, setTab] = useState<Tab>('feeders')
-  const [addingFeeder, setAddingFeeder] = useState(false)
+  const [showAddFeeder, setShowAddFeeder] = useState(false)
+  const [showAddFrozen, setShowAddFrozen] = useState(false)
   const feeders = useFeederColonies()
   const cucs = useCUCCultures()
+
+  const liveColonies = feeders?.filter(c => c.type !== 'frozen_prey')
+  const frozenItems = feeders?.filter(c => c.type === 'frozen_prey')
 
   const handleHarvest = async (colonyId: string, qty: number) => {
     const colony = feeders?.find(c => c.id === colonyId)
     if (!colony) return
-    const newCount = (colony.estimatedCount ?? 0) - qty
-    await updateFeederColony(colonyId, { estimatedCount: Math.max(0, newCount), updatedAt: nowISO() })
-    await addColonyLogEvent({ colonyId, colonyType: 'feeder', eventType: 'harvest', occurredAt: nowISO(), harvestQuantity: qty, countAfter: Math.max(0, newCount) })
+    const newCount = Math.max(0, (colony.estimatedCount ?? 0) - qty)
+    await updateFeederColony(colonyId, { estimatedCount: newCount, updatedAt: nowISO() })
+    await addColonyLogEvent({ colonyId, colonyType: 'feeder', eventType: 'harvest', occurredAt: nowISO(), harvestQuantity: qty, countAfter: newCount })
+  }
+
+  const handleFrozenAdjust = async (colonyId: string, delta: number) => {
+    const item = frozenItems?.find(c => c.id === colonyId)
+    if (!item) return
+    const newCount = Math.max(0, (item.estimatedCount ?? 0) + delta)
+    await updateFeederColony(colonyId, { estimatedCount: newCount, updatedAt: nowISO() })
   }
 
   return (
@@ -153,35 +252,74 @@ export default function Colonies() {
       <div className="px-4 pt-6 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Colonies</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Feeders & Clean-Up Crew</p>
+          <p className="text-sm text-gray-500 mt-0.5">Feeders, Frozen & Clean-Up Crew</p>
         </div>
-        <button onClick={() => setAddingFeeder(true)} className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full flex items-center justify-center">
-          <Plus size={20} />
+        {tab === 'feeders' && (
+          <button onClick={() => setShowAddFeeder(true)} className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full flex items-center justify-center">
+            <Plus size={20} />
+          </button>
+        )}
+        {tab === 'frozen' && (
+          <button onClick={() => setShowAddFrozen(true)} className="w-10 h-10 bg-blue-500 hover:bg-blue-400 text-white rounded-full flex items-center justify-center">
+            <Plus size={20} />
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 px-4 mb-4 overflow-x-auto pb-1">
+        <button onClick={() => setTab('feeders')}
+          className={cn('flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors shrink-0',
+            tab === 'feeders' ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          )}>
+          <Bug size={14} /> Feeders
+        </button>
+        <button onClick={() => setTab('frozen')}
+          className={cn('flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors shrink-0',
+            tab === 'frozen' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          )}>
+          <Snowflake size={14} /> Frozen
+        </button>
+        <button onClick={() => setTab('cuc')}
+          className={cn('flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors shrink-0',
+            tab === 'cuc' ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          )}>
+          <Leaf size={14} /> CUC
         </button>
       </div>
 
-      <div className="flex gap-2 px-4 mb-4">
-        {(['feeders', 'cuc'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={cn('flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
-              tab === t ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            )}>
-            {t === 'feeders' ? <><Bug size={14} /> Feeders</> : <><Leaf size={14} /> CUC</>}
-          </button>
-        ))}
-      </div>
-
       <div className="px-4 space-y-3">
-        {addingFeeder && <AddFeederForm onClose={() => setAddingFeeder(false)} />}
-
         {tab === 'feeders' && (
-          feeders?.length === 0 ? (
-            <div className="text-center py-12">
-              <Bug size={36} className="text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-400 font-medium">No feeder colonies yet</p>
-              <p className="text-gray-600 text-sm mt-1">Track your roach colonies, crickets, and frozen prey stock.</p>
-            </div>
-          ) : feeders?.map(c => <FeederCard key={c.id} colony={c} onHarvest={handleHarvest} />)
+          <>
+            {showAddFeeder && <AddFeederForm onClose={() => setShowAddFeeder(false)} />}
+            {liveColonies?.length === 0 && !showAddFeeder ? (
+              <div className="text-center py-12">
+                <Bug size={36} className="text-gray-700 mx-auto mb-3" />
+                <p className="text-gray-400 font-medium">No feeder colonies yet</p>
+                <p className="text-gray-600 text-sm mt-1">Track your roach colonies, crickets, and more.</p>
+              </div>
+            ) : liveColonies?.map(c => <FeederCard key={c.id} colony={c} onHarvest={handleHarvest} />)}
+          </>
+        )}
+
+        {tab === 'frozen' && (
+          <>
+            {showAddFrozen && <AddFrozenForm onClose={() => setShowAddFrozen(false)} />}
+            {frozenItems?.length === 0 && !showAddFrozen ? (
+              <div className="text-center py-12">
+                <Snowflake size={36} className="text-gray-700 mx-auto mb-3" />
+                <p className="text-gray-400 font-medium">No frozen items tracked</p>
+                <p className="text-gray-600 text-sm mt-1">Track frozen mice, rats, ASF and other prey.</p>
+                <button
+                  onClick={() => setShowAddFrozen(true)}
+                  className="mt-4 px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
+                  Add Frozen Item
+                </button>
+              </div>
+            ) : frozenItems?.map(c => (
+              <FrozenCard key={c.id} colony={c} onAdjust={handleFrozenAdjust} />
+            ))}
+          </>
         )}
 
         {tab === 'cuc' && (
