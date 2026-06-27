@@ -1,13 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, AlertTriangle, Bug, Leaf, Snowflake, Search, ArrowUpDown, Check, Sprout, Droplets } from 'lucide-react'
-import { useFeederColonies, useCUCCultures, addFeederColony, updateFeederColony, addColonyLogEvent } from '@/db/hooks/useColonies'
-import { usePlants, addPlant, updatePlant } from '@/db/hooks/usePlants'
+import { Plus, AlertTriangle, Bug, Leaf, Snowflake, Search, ArrowUpDown, Check } from 'lucide-react'
+import { useFeederColonies, useCUCCultures, addFeederColony, updateFeederColony, addColonyLogEvent, addCUCCulture, updateCUCCulture } from '@/db/hooks/useColonies'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { timeAgo, nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { FeederColony, CUCCulture, Plant, PlantType, PlantStatus } from '@/types'
+import type { FeederColony, CUCCulture, CUCHealth, CUCType, CUCLocation } from '@/types'
 
-type Tab = 'feeders' | 'frozen' | 'cuc' | 'plants'
+type Tab = 'feeders' | 'frozen' | 'cuc'
+
+const HEALTH_COLORS: Record<CUCHealth, string> = {
+  thriving:  'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+  stable:    'bg-blue-500/20 text-blue-400 border-blue-500/40',
+  declining: 'bg-red-500/20 text-red-400 border-red-500/40',
+  unknown:   'bg-gray-700/50 text-gray-500 border-gray-700',
+}
+
+const HEALTH_CYCLE: CUCHealth[] = ['unknown', 'thriving', 'stable', 'declining']
 
 // ── Shared Sort Dropdown ───────────────────────────────────────────────────
 function SortDropdown<K extends string>({ value, options, onChange }: {
@@ -45,7 +53,7 @@ function SortDropdown<K extends string>({ value, options, onChange }: {
   )
 }
 
-// ── Feeders ────────────────────────────────────────────────────────────────
+// ── Feeder Cards ───────────────────────────────────────────────────────────
 const FROZEN_PRESETS = [
   'FT Pinky', 'FT Fuzzy', 'FT Hopper',
   'FT Small Mouse', 'FT Medium Mouse', 'FT Large Mouse',
@@ -140,171 +148,180 @@ function FrozenCard({ colony, onAdjust }: { colony: FeederColony; onAdjust: (id:
   )
 }
 
-function CUCCard({ culture }: { culture: CUCCulture }) {
-  const healthColors = { thriving: 'text-emerald-400', stable: 'text-blue-400', declining: 'text-red-400', unknown: 'text-gray-500' }
+// ── CUC Card ───────────────────────────────────────────────────────────────
+function CUCCard({ culture, enclosureName, onMarkFed, onUpdateCount, onCycleHealth }: {
+  culture: CUCCulture
+  enclosureName?: string
+  onMarkFed: (id: string) => void
+  onUpdateCount: (id: string, delta: number) => void
+  onCycleHealth: (id: string, current: CUCHealth) => void
+}) {
+  const qty = culture.estimatedCount ?? 0
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div>
-          <p className="font-semibold text-gray-100">{culture.name}</p>
-          <p className="text-xs text-gray-500 italic">{culture.species}</p>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-100 truncate">{culture.name}</p>
+          <p className="text-xs text-gray-500 italic truncate">{culture.species}</p>
         </div>
-        <span className={cn('text-xs font-semibold capitalize shrink-0', healthColors[culture.reproductionHealth])}>
+        <button
+          onClick={() => onCycleHealth(culture.id, culture.reproductionHealth)}
+          className={cn('shrink-0 text-xs font-semibold capitalize px-2 py-0.5 rounded-full border transition-colors', HEALTH_COLORS[culture.reproductionHealth])}>
           {culture.reproductionHealth}
-        </span>
-      </div>
-      <div className="flex gap-4 text-sm">
-        <div><p className="text-xs text-gray-600 mb-0.5">Est. count</p><p className="text-gray-300">{culture.estimatedCount ?? '—'}</p></div>
-        <div><p className="text-xs text-gray-600 mb-0.5">Location</p><p className="text-gray-300 capitalize">{culture.location.replace(/_/g, ' ')}</p></div>
-        {culture.lastFedDate && (
-          <div><p className="text-xs text-gray-600 mb-0.5">Last fed</p><p className="text-gray-300">{timeAgo(culture.lastFedDate)}</p></div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── Plants ─────────────────────────────────────────────────────────────────
-const PLANT_STATUS_COLORS: Record<PlantStatus, string> = {
-  thriving:    'bg-emerald-500/20 text-emerald-300',
-  stable:      'bg-blue-500/20 text-blue-300',
-  struggling:  'bg-red-500/20 text-red-300',
-  dormant:     'bg-gray-500/20 text-gray-400',
-  propagating: 'bg-purple-500/20 text-purple-300',
-  dead:        'bg-gray-700/50 text-gray-600',
-}
-
-const PLANT_TYPE_EMOJI: Record<PlantType, string> = {
-  tropical: '🌿', succulent: '🪴', bromeliad: '🌺', moss: '🌱',
-  fern: '🌿', carnivorous: '🪤', aquatic: '🌊', epiphyte: '🌿',
-  vine: '🌿', other: '🌱',
-}
-
-const PLANT_SORT_OPTS = [
-  { key: 'name' as const, label: 'Name (A → Z)' },
-  { key: 'watered' as const, label: 'Last Watered (Oldest)' },
-  { key: 'status' as const, label: 'Status' },
-]
-
-function sortPlants(list: Plant[], sort: string): Plant[] {
-  return [...list].sort((a, b) => {
-    if (sort === 'watered') {
-      const da = a.lastWatered ? new Date(a.lastWatered).getTime() : 0
-      const db_ = b.lastWatered ? new Date(b.lastWatered).getTime() : 0
-      return da - db_
-    }
-    if (sort === 'status') return a.status.localeCompare(b.status)
-    return a.name.localeCompare(b.name)
-  })
-}
-
-function PlantCard({ plant, onWater }: { plant: Plant; onWater: (id: string) => void }) {
-  const isDue = plant.wateringFrequencyDays && plant.lastWatered
-    ? (Date.now() - new Date(plant.lastWatered).getTime()) / 86400000 >= plant.wateringFrequencyDays
-    : !plant.lastWatered && !!plant.wateringFrequencyDays
-  return (
-    <div className={cn('bg-gray-900 border rounded-xl p-4', isDue ? 'border-blue-500/40' : 'border-gray-800')}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-lg shrink-0 overflow-hidden">
-            {plant.thumbnailBase64
-              ? <img src={plant.thumbnailBase64} className="w-full h-full object-cover" />
-              : PLANT_TYPE_EMOJI[plant.type]}
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-gray-100 truncate">{plant.name}</p>
-            <p className="text-xs text-gray-500 italic truncate">{plant.species}</p>
-            {plant.variety && <p className="text-xs text-emerald-400 truncate">{plant.variety}</p>}
-          </div>
-        </div>
-        <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-medium capitalize shrink-0', PLANT_STATUS_COLORS[plant.status])}>
-          {plant.status}
-        </span>
-      </div>
-      <div className="flex gap-3 text-xs mb-3">
-        <div>
-          <p className="text-gray-600 mb-0.5">Light</p>
-          <p className="text-gray-300 capitalize">{plant.lightNeeds.replace(/_/g, ' ')}</p>
-        </div>
-        <div>
-          <p className="text-gray-600 mb-0.5">Last watered</p>
-          <p className={cn('font-medium', isDue ? 'text-blue-400' : 'text-gray-300')}>
-            {plant.lastWatered ? timeAgo(plant.lastWatered) : 'Never'}
-          </p>
-        </div>
-        {plant.propagationsCount > 0 && (
-          <div>
-            <p className="text-gray-600 mb-0.5">Propagations</p>
-            <p className="text-purple-400">{plant.propagationsCount}</p>
-          </div>
-        )}
-      </div>
-      {isDue && (
-        <button onClick={() => onWater(plant.id)}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-300 text-sm font-medium rounded-lg transition-colors">
-          <Droplets size={14} /> Mark Watered
         </button>
+      </div>
+
+      {/* Info row */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        <div>
+          <p className="text-gray-600 mb-0.5">Type</p>
+          <p className="text-gray-300 capitalize">{culture.type}</p>
+        </div>
+        <div>
+          <p className="text-gray-600 mb-0.5">Location</p>
+          <p className="text-gray-300">{enclosureName ?? culture.location.replace(/_/g, ' ')}</p>
+        </div>
+        {culture.lastFedDate && (
+          <div>
+            <p className="text-gray-600 mb-0.5">Last fed</p>
+            <p className="text-gray-300">{timeAgo(culture.lastFedDate)}</p>
+          </div>
+        )}
+      </div>
+
+      {culture.substrateNotes && (
+        <p className="text-xs text-gray-600 italic truncate">Substrate: {culture.substrateNotes}</p>
       )}
+
+      {/* Count + actions */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-2 py-1">
+          <button onClick={() => onUpdateCount(culture.id, -1)} disabled={qty <= 0}
+            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-200 disabled:opacity-40 font-bold text-lg">−</button>
+          <span className="w-10 text-center text-sm font-semibold text-gray-100">{qty}</span>
+          <button onClick={() => onUpdateCount(culture.id, 1)}
+            className="w-6 h-6 flex items-center justify-center text-emerald-400 hover:text-emerald-300 font-bold text-lg">+</button>
+        </div>
+        <p className="text-xs text-gray-600">est. count</p>
+        <button onClick={() => onMarkFed(culture.id)}
+          className="ml-auto px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors">
+          Mark Fed
+        </button>
+      </div>
     </div>
   )
 }
 
-function AddPlantForm({ onClose }: { onClose: () => void }) {
+// ── Add Forms ──────────────────────────────────────────────────────────────
+const STYLE = `.f-input { display:block; width:100%; background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:0.5rem; padding:0.5rem 0.75rem; font-size:0.8125rem; outline:none; } select.f-input option { background:#1f2937; }`
+
+function AddCUCForm({ onClose }: { onClose: () => void }) {
+  const enclosures = useEnclosures()
   const [name, setName] = useState('')
   const [species, setSpecies] = useState('')
-  const [variety, setVariety] = useState('')
-  const [type, setType] = useState<PlantType>('tropical')
-  const [light, setLight] = useState<Plant['lightNeeds']>('medium')
-  const [waterDays, setWaterDays] = useState('')
+  const [type, setType] = useState<CUCType>('isopod')
+  const [location, setLocation] = useState<CUCLocation>('standalone_culture')
+  const [enclosureId, setEnclosureId] = useState('')
+  const [count, setCount] = useState('')
+  const [health, setHealth] = useState<CUCHealth>('unknown')
+  const [substrateNotes, setSubstrateNotes] = useState('')
   const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
-    if (!name || !species) return
-    await addPlant({
-      name, species, variety: variety || undefined, type,
-      status: 'stable', lightNeeds: light,
-      wateringFrequencyDays: waterDays ? parseInt(waterDays) : undefined,
-      lastWatered: undefined, lastFertilized: undefined,
-      propagationsCount: 0, notes: notes || undefined,
-      thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: undefined,
-    })
-    onClose()
+    if (!name) return
+    setSaving(true)
+    setError(null)
+    try {
+      await addCUCCulture({
+        name, species: species || name, type, location,
+        enclosureId: location === 'in_enclosure' ? enclosureId || undefined : undefined,
+        estimatedCount: count ? parseInt(count) : undefined,
+        reproductionHealth: health,
+        substrateNotes: substrateNotes || undefined,
+        notes: notes || undefined,
+        lastFedDate: undefined, feedingNotes: undefined,
+        lastCountDate: undefined, introductionDate: undefined,
+      })
+      onClose()
+    } catch (err: any) {
+      setError(`Save failed: ${err?.message || err?.details || JSON.stringify(err)}`)
+      setSaving(false)
+    }
   }
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
-      <p className="text-sm font-semibold text-gray-200">Add Plant</p>
-      <input value={name} onChange={e => setName(e.target.value)} type="text" placeholder="Name / nickname" className="f-input" />
-      <input value={species} onChange={e => setSpecies(e.target.value)} type="text" placeholder="Botanical name (e.g. Epipremnum aureum)" className="f-input" />
-      <input value={variety} onChange={e => setVariety(e.target.value)} type="text" placeholder="Variety / cultivar (optional)" className="f-input" />
-      <div className="grid grid-cols-2 gap-2">
-        <select value={type} onChange={e => setType(e.target.value as PlantType)} className="f-input">
-          <option value="tropical">Tropical</option>
-          <option value="succulent">Succulent</option>
-          <option value="bromeliad">Bromeliad</option>
-          <option value="moss">Moss</option>
-          <option value="fern">Fern</option>
-          <option value="carnivorous">Carnivorous</option>
-          <option value="aquatic">Aquatic</option>
-          <option value="epiphyte">Epiphyte</option>
-          <option value="vine">Vine</option>
-          <option value="other">Other</option>
-        </select>
-        <select value={light} onChange={e => setLight(e.target.value as Plant['lightNeeds'])} className="f-input">
-          <option value="low">Low light</option>
-          <option value="medium">Medium</option>
-          <option value="bright_indirect">Bright indirect</option>
-          <option value="full_sun">Full sun</option>
-        </select>
+      <p className="text-sm font-semibold text-gray-200">Add CUC Culture</p>
+
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Culture name (e.g. Powder Blue Isopods)" className="f-input" />
+      <input value={species} onChange={e => setSpecies(e.target.value)} placeholder="Species (e.g. Porcellionides pruinosus)" className="f-input" />
+
+      <div>
+        <p className="text-xs text-gray-500 mb-1.5">Type</p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {(['isopod', 'springtail', 'other'] as CUCType[]).map(t => (
+            <button key={t} onClick={() => setType(t)}
+              className={cn('py-1.5 rounded-lg text-xs capitalize border transition-all',
+                type === t ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'border-gray-700 text-gray-500'
+              )}>{t}</button>
+          ))}
+        </div>
       </div>
-      <input value={waterDays} onChange={e => setWaterDays(e.target.value)} type="number" min="1" placeholder="Water every X days (optional)" className="f-input" />
-      <input value={notes} onChange={e => setNotes(e.target.value)} type="text" placeholder="Notes (optional)" className="f-input" />
+
+      <div>
+        <p className="text-xs text-gray-500 mb-1.5">Location</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button onClick={() => setLocation('standalone_culture')}
+            className={cn('py-1.5 rounded-lg text-xs border transition-all',
+              location === 'standalone_culture' ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'border-gray-700 text-gray-500'
+            )}>Standalone culture</button>
+          <button onClick={() => setLocation('in_enclosure')}
+            className={cn('py-1.5 rounded-lg text-xs border transition-all',
+              location === 'in_enclosure' ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'border-gray-700 text-gray-500'
+            )}>In enclosure</button>
+        </div>
+      </div>
+
+      {location === 'in_enclosure' && (enclosures?.length ?? 0) > 0 && (
+        <select value={enclosureId} onChange={e => setEnclosureId(e.target.value)} className="f-input">
+          <option value="">Select enclosure (optional)</option>
+          {enclosures!.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+      )}
+
+      <input value={count} onChange={e => setCount(e.target.value)} type="number" min="0"
+        placeholder="Estimated count (optional)" className="f-input" />
+
+      <div>
+        <p className="text-xs text-gray-500 mb-1.5">Health status</p>
+        <div className="grid grid-cols-4 gap-1">
+          {(['thriving', 'stable', 'declining', 'unknown'] as CUCHealth[]).map(h => (
+            <button key={h} onClick={() => setHealth(h)}
+              className={cn('py-1.5 rounded-lg text-xs capitalize border transition-all',
+                health === h ? HEALTH_COLORS[h] : 'border-gray-700 text-gray-500'
+              )}>{h}</button>
+          ))}
+        </div>
+      </div>
+
+      <input value={substrateNotes} onChange={e => setSubstrateNotes(e.target.value)}
+        placeholder="Substrate / moisture notes (optional)" className="f-input" />
+      <input value={notes} onChange={e => setNotes(e.target.value)}
+        placeholder="Notes (optional)" className="f-input" />
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
       <div className="flex gap-2">
-        <button onClick={handleSave} disabled={!name || !species}
-          className="flex-1 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Save</button>
+        <button onClick={handleSave} disabled={!name || saving}
+          className="flex-1 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
         <button onClick={onClose} className="px-3 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg">Cancel</button>
       </div>
-      <style>{`.f-input { display:block; width:100%; background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:0.5rem; padding:0.5rem 0.75rem; font-size:0.8125rem; outline:none; } select.f-input option { background:#1f2937; }`}</style>
+      <style>{STYLE}</style>
     </div>
   )
 }
@@ -342,7 +359,7 @@ function AddFeederForm({ onClose }: { onClose: () => void }) {
         <button onClick={handleSave} disabled={!name} className="flex-1 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Save</button>
         <button onClick={onClose} className="px-3 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg">Cancel</button>
       </div>
-      <style>{`.f-input { display:block; width:100%; background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:0.5rem; padding:0.5rem 0.75rem; font-size:0.8125rem; outline:none; } select.f-input option { background:#1f2937; }`}</style>
+      <style>{STYLE}</style>
     </div>
   )
 }
@@ -375,7 +392,7 @@ function AddFrozenForm({ onClose }: { onClose: () => void }) {
         <button onClick={handleSave} disabled={isCustom && !customName} className="flex-1 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Add Item</button>
         <button onClick={onClose} className="px-3 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg">Cancel</button>
       </div>
-      <style>{`.f-input { display:block; width:100%; background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:0.5rem; padding:0.5rem 0.75rem; font-size:0.8125rem; outline:none; } select.f-input option { background:#1f2937; }`}</style>
+      <style>{STYLE}</style>
     </div>
   )
 }
@@ -385,31 +402,24 @@ export default function Colonies() {
   const [tab, setTab] = useState<Tab>('feeders')
   const [showAddFeeder, setShowAddFeeder] = useState(false)
   const [showAddFrozen, setShowAddFrozen] = useState(false)
-  const [showAddPlant, setShowAddPlant] = useState(false)
+  const [showAddCUC, setShowAddCUC] = useState(false)
 
-  // Feeders state
   const [feederSearch, setFeederSearch] = useState('')
   const [feederLowOnly, setFeederLowOnly] = useState(false)
   const [feederSort, setFeederSort] = useState<'name' | 'count_low' | 'count_high'>('name')
 
-  // Frozen state
   const [frozenLowOnly, setFrozenLowOnly] = useState(false)
   const [frozenSort, setFrozenSort] = useState<'name' | 'count_low' | 'count_high'>('name')
 
-  // CUC state
   const [cucSearch, setCucSearch] = useState('')
-  const [cucFilter, setCucFilter] = useState<'all' | 'thriving' | 'stable' | 'declining'>('all')
+  const [cucFilter, setCucFilter] = useState<'all' | CUCHealth>('all')
   const [cucSort, setCucSort] = useState<'name' | 'count_low' | 'count_high'>('name')
-
-  // Plants state
-  const [plantSearch, setPlantSearch] = useState('')
-  const [plantFilter, setPlantFilter] = useState<'all' | 'thriving' | 'stable' | 'struggling' | 'propagating' | 'watering_due'>('all')
-  const [plantSort, setPlantSort] = useState<'name' | 'watered' | 'status'>('name')
 
   const feeders = useFeederColonies()
   const cucs = useCUCCultures()
-  const plants = usePlants()
+  const enclosures = useEnclosures()
 
+  const enclosureMap = new Map(enclosures?.map(e => [e.id, e]) ?? [])
   const liveColonies = feeders?.filter(c => c.type !== 'frozen_prey') ?? []
   const frozenItems = feeders?.filter(c => c.type === 'frozen_prey') ?? []
 
@@ -428,11 +438,23 @@ export default function Colonies() {
     await updateFeederColony(colonyId, { estimatedCount: newCount, updatedAt: nowISO() })
   }
 
-  const handleWaterPlant = async (id: string) => {
-    await updatePlant(id, { lastWatered: nowISO() })
+  const handleCUCMarkFed = async (id: string) => {
+    await updateCUCCulture(id, { lastFedDate: nowISO() })
   }
 
-  // Filtered lists
+  const handleCUCUpdateCount = async (id: string, delta: number) => {
+    const c = cucs?.find(x => x.id === id)
+    if (!c) return
+    const newCount = Math.max(0, (c.estimatedCount ?? 0) + delta)
+    await updateCUCCulture(id, { estimatedCount: newCount, lastCountDate: nowISO() })
+  }
+
+  const handleCUCCycleHealth = async (id: string, current: CUCHealth) => {
+    const idx = HEALTH_CYCLE.indexOf(current)
+    const next = HEALTH_CYCLE[(idx + 1) % HEALTH_CYCLE.length]
+    await updateCUCCulture(id, { reproductionHealth: next })
+  }
+
   const filteredFeeders = sortFeeders(
     liveColonies.filter(c => {
       if (feederSearch && !c.name.toLowerCase().includes(feederSearch.toLowerCase())) return false
@@ -456,32 +478,13 @@ export default function Colonies() {
     return true
   })
 
-  const filteredPlants = sortPlants(
-    (plants ?? []).filter(p => {
-      if (plantSearch && !p.name.toLowerCase().includes(plantSearch.toLowerCase()) && !p.species.toLowerCase().includes(plantSearch.toLowerCase())) return false
-      if (plantFilter === 'watering_due') {
-        const isDue = p.wateringFrequencyDays && p.lastWatered
-          ? (Date.now() - new Date(p.lastWatered).getTime()) / 86400000 >= p.wateringFrequencyDays
-          : !p.lastWatered && !!p.wateringFrequencyDays
-        return !!isDue
-      }
-      if (plantFilter !== 'all' && p.status !== plantFilter) return false
-      return true
-    }), plantSort)
-
-  const plantsDue = (plants ?? []).filter(p =>
-    p.wateringFrequencyDays && ((p.lastWatered
-      ? (Date.now() - new Date(p.lastWatered).getTime()) / 86400000 >= p.wateringFrequencyDays
-      : true))
-  ).length
-
   return (
     <div className="min-h-full pb-4">
       {/* Header */}
       <div className="px-4 pt-6 pb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Colonies</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Feeders · Frozen · CUC · Plants</p>
+          <p className="text-sm text-gray-500 mt-0.5">Feeders · Frozen · CUC</p>
         </div>
         <div>
           {tab === 'feeders' && (
@@ -490,8 +493,8 @@ export default function Colonies() {
           {tab === 'frozen' && (
             <button onClick={() => setShowAddFrozen(true)} className="w-10 h-10 bg-blue-500 hover:bg-blue-400 text-white rounded-full flex items-center justify-center"><Plus size={20} /></button>
           )}
-          {tab === 'plants' && (
-            <button onClick={() => setShowAddPlant(true)} className="w-10 h-10 bg-green-600 hover:bg-green-500 text-white rounded-full flex items-center justify-center"><Plus size={20} /></button>
+          {tab === 'cuc' && (
+            <button onClick={() => setShowAddCUC(true)} className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full flex items-center justify-center"><Plus size={20} /></button>
           )}
         </div>
       </div>
@@ -510,15 +513,6 @@ export default function Colonies() {
           className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium shrink-0 transition-colors',
             tab === 'cuc' ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           )}><Leaf size={14} /> CUC</button>
-        <button onClick={() => setTab('plants')}
-          className={cn('relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium shrink-0 transition-colors',
-            tab === 'plants' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-          )}>
-          <Sprout size={14} /> Plants
-          {plantsDue > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{plantsDue}</span>
-          )}
-        </button>
       </div>
 
       <div className="px-4 space-y-3">
@@ -576,6 +570,7 @@ export default function Colonies() {
         {/* ── CUC ── */}
         {tab === 'cuc' && (
           <>
+            {showAddCUC && <AddCUCForm onClose={() => setShowAddCUC(false)} />}
             <div className="flex gap-2 items-center">
               <div className="relative flex-1">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -586,63 +581,35 @@ export default function Colonies() {
               <SortDropdown value={cucSort} options={FEEDER_SORT_OPTS} onChange={setCucSort} />
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {(['all', 'thriving', 'stable', 'declining'] as const).map(f => (
+              {(['all', 'thriving', 'stable', 'declining', 'unknown'] as const).map(f => (
                 <button key={f} onClick={() => setCucFilter(f)}
                   className={cn('shrink-0 px-2.5 py-1 rounded-full text-xs font-medium capitalize transition-colors',
                     cucFilter === f ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                   )}>{f}</button>
               ))}
             </div>
-            {filteredCUC.length === 0 ? (
+            {filteredCUC.length === 0 && !showAddCUC ? (
               <div className="text-center py-12">
                 <Leaf size={36} className="text-gray-700 mx-auto mb-3" />
                 <p className="text-gray-400 font-medium">{(cucs?.length ?? 0) === 0 ? 'No CUC cultures yet' : 'No cultures match'}</p>
-                {(cucs?.length ?? 0) === 0 && <p className="text-gray-600 text-sm mt-1">Track isopods and springtails for bioactive enclosures.</p>}
-              </div>
-            ) : filteredCUC.map(c => <CUCCard key={c.id} culture={c} />)}
-          </>
-        )}
-
-        {/* ── PLANTS ── */}
-        {tab === 'plants' && (
-          <>
-            {showAddPlant && <AddPlantForm onClose={() => setShowAddPlant(false)} />}
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input type="search" placeholder="Search plants…" value={plantSearch}
-                  onChange={e => setPlantSearch(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 text-gray-200 placeholder-gray-600 rounded-xl pl-8 pr-3 py-2 text-sm focus:outline-none" />
-              </div>
-              <SortDropdown value={plantSort} options={PLANT_SORT_OPTS} onChange={setPlantSort} />
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {([
-                { key: 'all', label: 'All' },
-                { key: 'thriving', label: 'Thriving' },
-                { key: 'stable', label: 'Stable' },
-                { key: 'struggling', label: 'Struggling' },
-                { key: 'propagating', label: 'Propagating' },
-                { key: 'watering_due', label: '💧 Due' },
-              ] as const).map(f => (
-                <button key={f.key} onClick={() => setPlantFilter(f.key)}
-                  className={cn('shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
-                    plantFilter === f.key ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  )}>{f.label}</button>
-              ))}
-            </div>
-            {filteredPlants.length === 0 && !showAddPlant ? (
-              <div className="text-center py-12">
-                <Sprout size={36} className="text-gray-700 mx-auto mb-3" />
-                <p className="text-gray-400 font-medium">{(plants?.length ?? 0) === 0 ? 'No plants yet' : 'No plants match'}</p>
-                {(plants?.length ?? 0) === 0 && (
+                {(cucs?.length ?? 0) === 0 && (
                   <>
-                    <p className="text-gray-600 text-sm mt-1">Track plants for bioactive setups, aquariums, or propagation.</p>
-                    <button onClick={() => setShowAddPlant(true)} className="mt-4 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl">Add Plant</button>
+                    <p className="text-gray-600 text-sm mt-1">Track isopods and springtails for bioactive enclosures.</p>
+                    <button onClick={() => setShowAddCUC(true)}
+                      className="mt-4 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold rounded-xl">
+                      Add First Culture
+                    </button>
                   </>
                 )}
               </div>
-            ) : filteredPlants.map(p => <PlantCard key={p.id} plant={p} onWater={handleWaterPlant} />)}
+            ) : filteredCUC.map(c => (
+              <CUCCard key={c.id} culture={c}
+                enclosureName={c.enclosureId ? enclosureMap.get(c.enclosureId)?.name : undefined}
+                onMarkFed={handleCUCMarkFed}
+                onUpdateCount={handleCUCUpdateCount}
+                onCycleHealth={handleCUCCycleHealth}
+              />
+            ))}
           </>
         )}
       </div>
