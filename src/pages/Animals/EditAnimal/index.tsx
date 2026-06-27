@@ -444,24 +444,35 @@ export default function EditAnimal() {
                       className={cn('flex-1 py-1.5 text-xs rounded-lg border capitalize transition-colors',
                         mistingSchedule === s ? 'border-blue-500 text-blue-300 bg-blue-500/10' : 'border-gray-700 text-gray-500 hover:bg-gray-800'
                       )}>
-                      {s === 'none' ? 'No schedule' : s === 'interval' ? 'Every X' : 'Set times'}
+                      {s === 'none' ? 'No schedule' : s === 'interval' ? 'Interval' : 'Set times'}
                     </button>
                   ))}
                 </div>
 
-                {/* Interval fields */}
+                {/* Interval fields — grid so both fields are equal width */}
                 {mistingSchedule === 'interval' && (
-                  <div className="flex gap-2">
-                    <input
-                      type="number" min="1" placeholder="e.g. 12"
-                      value={mistingInterval}
-                      onChange={e => setMistingInterval(e.target.value)}
-                      className="input-field flex-1"
-                    />
-                    <select value={mistingUnit} onChange={e => setMistingUnit(e.target.value as any)} className="input-field w-24">
-                      <option value="hours">Hours</option>
-                      <option value="days">Days</option>
-                    </select>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label">Every</label>
+                        <input
+                          type="number" min="1" placeholder="12"
+                          value={mistingInterval}
+                          onChange={e => setMistingInterval(e.target.value)}
+                          className="input-field"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Unit</label>
+                        <select value={mistingUnit} onChange={e => setMistingUnit(e.target.value as any)} className="input-field">
+                          <option value="hours">Hours</option>
+                          <option value="days">Days</option>
+                        </select>
+                      </div>
+                    </div>
+                    {mistingInterval && (
+                      <p className="text-xs text-blue-400">Mist every {mistingInterval} {mistingUnit}</p>
+                    )}
                   </div>
                 )}
 

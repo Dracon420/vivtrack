@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, PawPrint, LayoutGrid, Sprout, MoreHorizontal, X, Bug, Dna, DollarSign, Download, Settings, BookOpen, ScanLine } from 'lucide-react'
+import { Home, PawPrint, LayoutGrid, Sprout, MoreHorizontal, X, Bug, Dna, DollarSign, Download, Settings, BookOpen, ScanLine, Images } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
@@ -17,6 +17,7 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
 }
 
 const MORE_ITEMS = [
+  { to: '/photos', icon: <Images size={22} />, label: 'Photos', desc: 'All animal & enclosure pics' },
   { to: '/colonies', icon: <Bug size={22} />, label: 'Colonies', desc: 'Feeders, frozen & CUC' },
   { to: '/scanner', icon: <ScanLine size={22} />, label: 'Scanner', desc: 'Scan QR / NFC tags' },
   { to: '/species', icon: <BookOpen size={22} />, label: 'Species', desc: 'Browse care guides' },

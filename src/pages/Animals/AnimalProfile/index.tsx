@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Edit2, Thermometer, Droplets, Sun, Utensils, Scale, Home } from 'lucide-react'
-import { useAnimal } from '@/db/hooks/useAnimals'
+import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2 } from 'lucide-react'
+import { useAnimal, updateAnimal } from '@/db/hooks/useAnimals'
 import { useCareEvents } from '@/db/hooks/useCareEvents'
 import { useWeightRecords } from '@/db/hooks/useWeightRecords'
 import { useActiveMedications } from '@/db/hooks/useMedications'
 import { useEnclosure } from '@/db/hooks/useEnclosures'
 import { formatDate, timeAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { CareEvent, Animal } from '@/types'
+import CropModal from '@/components/CropModal'
+import type { CareEvent, Animal, AppPhoto } from '@/types'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { v4 as uuidv4 } from 'uuid'
 
 const statusColors: Record<Animal['status'], string> = {
   active: 'bg-emerald-500/20 text-emerald-300',
@@ -26,7 +28,7 @@ const eventIcon: Record<string, string> = {
   brumation_check: '❄️', temperature_check: '🌡️', humidity_check: '☁️',
 }
 
-type Tab = 'overview' | 'care_log' | 'weight' | 'medications' | 'notes'
+type Tab = 'overview' | 'care_log' | 'weight' | 'medications' | 'photos'
 
 function CareEventRow({ event }: { event: CareEvent }) {
   const icon = eventIcon[event.type] ?? '📋'
@@ -51,6 +53,17 @@ function CareEventRow({ event }: { event: CareEvent }) {
   )
 }
 
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-start gap-4">
+      <span className="text-xs text-gray-500 font-medium shrink-0">{label}</span>
+      {typeof value === 'string'
+        ? <span className="text-sm text-gray-200 text-right capitalize">{value}</span>
+        : value}
+    </div>
+  )
+}
+
 function OverviewTab({ animal }: { animal: Animal }) {
   const navigate = useNavigate()
   const enclosure = useEnclosure(animal.enclosureId)
@@ -60,7 +73,6 @@ function OverviewTab({ animal }: { animal: Animal }) {
 
   return (
     <div className="space-y-4">
-      {/* Basic info */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
         <Row label="Species" value={animal.species} />
         {animal.morph && <Row label="Morph" value={animal.morph} />}
@@ -87,7 +99,6 @@ function OverviewTab({ animal }: { animal: Animal }) {
         )}
       </div>
 
-      {/* NFC/QR token */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">QR Token</p>
         <p className="text-xs text-gray-600 font-mono break-all">{animal.qrCodeToken}</p>
@@ -105,17 +116,6 @@ function OverviewTab({ animal }: { animal: Animal }) {
           <p className="text-sm text-gray-300 whitespace-pre-wrap">{animal.notes}</p>
         </div>
       )}
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between items-start gap-4">
-      <span className="text-xs text-gray-500 font-medium shrink-0">{label}</span>
-      {typeof value === 'string'
-        ? <span className="text-sm text-gray-200 text-right capitalize">{value}</span>
-        : value}
     </div>
   )
 }
@@ -214,6 +214,125 @@ function MedsTab({ animalId }: { animalId: string }) {
   )
 }
 
+// ── Photos Tab ──────────────────────────────────────────────────────────────
+function PhotosTab({ animal }: { animal: Animal }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [viewPhoto, setViewPhoto] = useState<AppPhoto | null>(null)
+  const [saving, setSaving] = useState(false)
+  const photos = animal.photos ?? []
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setCropSrc(URL.createObjectURL(file))
+  }
+
+  const handleCropConfirm = async (base64: string) => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+    setSaving(true)
+    const now = new Date().toISOString()
+    const photo: AppPhoto = { id: uuidv4(), base64, takenAt: now, createdAt: now }
+    const updated = [...photos, photo]
+    await updateAnimal(animal.id, { photos: updated })
+    setSaving(false)
+  }
+
+  const handleDelete = async (photoId: string) => {
+    setViewPhoto(null)
+    await updateAnimal(animal.id, { photos: photos.filter(p => p.id !== photoId) })
+  }
+
+  return (
+    <>
+      {cropSrc && (
+        <CropModal
+          src={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={() => { URL.revokeObjectURL(cropSrc); setCropSrc(null) }}
+        />
+      )}
+
+      {/* Full-screen photo viewer */}
+      {viewPhoto && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => setViewPhoto(null)}>
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 to-transparent">
+            <button onClick={() => setViewPhoto(null)} className="text-gray-300 p-2 -ml-2">
+              <X size={22} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); handleDelete(viewPhoto.id) }}
+              className="flex items-center gap-1.5 text-red-400 text-sm px-3 py-1.5 rounded-xl hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4">
+            <img
+              src={viewPhoto.base64}
+              className="max-w-full max-h-full object-contain rounded-xl"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          {viewPhoto.caption && (
+            <p className="text-center text-sm text-gray-400 pb-8 px-4">{viewPhoto.caption}</p>
+          )}
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+
+      {photos.length === 0 && !saving ? (
+        <div className="text-center py-12">
+          <Camera size={36} className="text-gray-700 mx-auto mb-3" />
+          <p className="text-gray-400 font-medium">No photos yet</p>
+          <p className="text-gray-600 text-sm mt-1 mb-4">Add photos to document this animal's growth and appearance.</p>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-2 mx-auto bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+          >
+            <Camera size={16} /> Add First Photo
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          {/* Add Photo cell */}
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={saving}
+            className="aspect-square bg-gray-900 border border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center gap-1.5 hover:border-emerald-500/50 hover:bg-gray-800 transition-all active:scale-95"
+          >
+            {saving ? (
+              <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Camera size={20} className="text-gray-500" />
+                <span className="text-xs text-gray-600">Add</span>
+              </>
+            )}
+          </button>
+
+          {/* Photo grid */}
+          {[...photos].reverse().map(photo => (
+            <button
+              key={photo.id}
+              onClick={() => setViewPhoto(photo)}
+              className="aspect-square rounded-xl overflow-hidden active:scale-95 transition-transform"
+            >
+              <img
+                src={photo.base64}
+                className="w-full h-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function AnimalProfile() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -232,6 +351,7 @@ export default function AnimalProfile() {
     { key: 'care_log', label: 'Care Log' },
     { key: 'weight', label: 'Weight' },
     { key: 'medications', label: 'Meds' },
+    { key: 'photos', label: `Photos${(animal.photos?.length ?? 0) > 0 ? ` (${animal.photos!.length})` : ''}` },
   ]
 
   return (
@@ -256,13 +376,13 @@ export default function AnimalProfile() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-4 mb-4 overflow-x-auto pb-1">
+      <div className="flex gap-1 px-4 mb-4 overflow-x-auto pb-1 scrollbar-hide">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={cn(
-              'shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
+              'shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap',
               activeTab === t.key
                 ? 'bg-emerald-500 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -285,15 +405,18 @@ export default function AnimalProfile() {
         )}
         {activeTab === 'weight' && <WeightTab animalId={animal.id} />}
         {activeTab === 'medications' && <MedsTab animalId={animal.id} />}
+        {activeTab === 'photos' && <PhotosTab animal={animal} />}
       </div>
 
       {/* FAB */}
-      <button
-        onClick={() => navigate(`/animals/${animal.id}/log`)}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-30"
-      >
-        <Plus size={24} />
-      </button>
+      {activeTab !== 'photos' && (
+        <button
+          onClick={() => navigate(`/animals/${animal.id}/log`)}
+          className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-30"
+        >
+          <Plus size={24} />
+        </button>
+      )}
     </div>
   )
 }

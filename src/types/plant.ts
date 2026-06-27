@@ -54,6 +54,7 @@ export interface Plant {
   propagationsCount: number;
   notes?: string;
   thumbnailBase64?: string;
+  photos?: import('./photo').AppPhoto[];
   acquisitionDate?: string;
   speciesId?: string;
   animalSafe?: boolean;

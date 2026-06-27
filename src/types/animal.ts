@@ -7,6 +7,7 @@ export interface Animal {
   species: string;
   speciesId?: string;
   morph?: string;
+  photos?: import('./photo').AppPhoto[];
   sex: Sex;
   dateOfBirth?: string;
   acquisitionDate: string;

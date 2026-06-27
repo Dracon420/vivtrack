@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Plus, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Plus, X, Camera } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,6 +9,7 @@ import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { loadSpecies } from '@/utils/species'
 import { todayISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
+import CropModal from '@/components/CropModal'
 import type { SpeciesTemplate } from '@/types'
 
 type AnimalClass = SpeciesTemplate['animalClass']
@@ -46,10 +47,32 @@ const scheduleSchema = z.object({
 type InfoValues = z.infer<typeof infoSchema>
 type ScheduleValues = z.infer<typeof scheduleSchema>
 
+async function compressImage(file: File, maxPx = 400): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(maxPx / img.width, maxPx / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width = img.width * scale
+        canvas.height = img.height * scale
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.82))
+      }
+      img.onerror = reject
+      img.src = e.target!.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function AddAnimal() {
   const navigate = useNavigate()
   const animals = useAnimals()
   const enclosures = useEnclosures()
+  const photoRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState(1)
   const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
@@ -57,6 +80,10 @@ export default function AddAnimal() {
   const [selectedSpecies, setSelectedSpecies] = useState<SpeciesTemplate | null>(null)
   const [selectedEnclosureId, setSelectedEnclosureId] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Photo + crop state
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [thumbnail, setThumbnail] = useState<string | null>(null)
 
   // Step 2 — fish naming mode
   const [fishNamingMode, setFishNamingMode] = useState<'named' | 'group'>('named')
@@ -145,6 +172,7 @@ export default function AddAnimal() {
         acquisitionSource: info.acquisitionSource,
         enclosureId: selectedEnclosureId || undefined,
         photoIds: [],
+        thumbnailBase64: thumbnail ?? undefined,
         status: 'active',
         notes: info.notes,
         ...(isFishGroup && { groupCount: parseInt(groupCount) || 1, isGroup: true }),
@@ -170,7 +198,6 @@ export default function AddAnimal() {
     }
   }
 
-  // Validate step 2 fields before advancing
   const handleStep2Continue = infoForm.handleSubmit((data) => {
     if (isFishGroup) {
       if (!groupCount || parseInt(groupCount) < 1) {
@@ -188,6 +215,32 @@ export default function AddAnimal() {
     setStep(3)
   })
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    const url = URL.createObjectURL(file)
+    setCropSrc(url)
+  }
+
+  const handleCropConfirm = (base64: string) => {
+    // Also compress to 400px for thumbnail display
+    const img = new Image()
+    img.onload = () => {
+      const size = Math.min(img.width, img.height, 400)
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, size, size)
+      setThumbnail(canvas.toDataURL('image/jpeg', 0.82))
+    }
+    img.src = base64
+    setThumbnail(base64)
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+  }
+
   const addCustomAdditive = () => {
     const v = newAdditive.trim()
     if (v && !additives.includes(v)) { setAdditives(p => [...p, v]); setNewAdditive('') }
@@ -202,10 +255,19 @@ export default function AddAnimal() {
     </div>
   ) : null
 
-
   return (
     <div className="min-h-full pb-24">
       <style>{STYLES}</style>
+
+      {cropSrc && (
+        <CropModal
+          src={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={() => { URL.revokeObjectURL(cropSrc); setCropSrc(null) }}
+        />
+      )}
+
+      <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-5 pb-4">
@@ -234,7 +296,6 @@ export default function AddAnimal() {
       {/* ── Step 1: Species ── */}
       {step === 1 && (
         <div className="px-4 space-y-4">
-          {/* Stage 1: pick class */}
           <div>
             <label className="label">Animal Type</label>
             <select
@@ -249,7 +310,6 @@ export default function AddAnimal() {
             </select>
           </div>
 
-          {/* Stage 2: pick species — appears after class selected */}
           {selectedClass && (
             <div>
               <label className="label">
@@ -269,7 +329,6 @@ export default function AddAnimal() {
             </div>
           )}
 
-          {/* Preview card */}
           {selectedSpecies && (
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3">
               <p className="text-sm font-medium text-emerald-300">{selectedSpecies.commonName}</p>
@@ -306,6 +365,41 @@ export default function AddAnimal() {
         <form onSubmit={handleStep2Continue} className="px-4 space-y-4">
           {SpeciesBanner}
 
+          {/* ── Profile Photo ── */}
+          <div className="flex flex-col items-center gap-2 py-2">
+            <button
+              type="button"
+              onClick={() => photoRef.current?.click()}
+              className="relative group"
+            >
+              {thumbnail ? (
+                <img
+                  src={thumbnail}
+                  className="w-24 h-24 rounded-full object-cover border-2 border-emerald-500/50"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center group-hover:border-emerald-500/50 transition-colors">
+                  <span className="text-3xl">🐾</span>
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-emerald-500 group-hover:bg-emerald-400 text-white rounded-full flex items-center justify-center shadow-lg transition-colors">
+                <Camera size={14} />
+              </div>
+            </button>
+            <p className="text-xs text-gray-600">
+              {thumbnail ? 'Tap to change photo' : 'Add a profile photo (optional)'}
+            </p>
+            {thumbnail && (
+              <button
+                type="button"
+                onClick={() => setThumbnail(null)}
+                className="text-xs text-red-500 hover:text-red-400 transition-colors"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
+
           {/* Fish: named individual vs unnamed group */}
           {isFish && (
             <div>
@@ -335,7 +429,6 @@ export default function AddAnimal() {
             </div>
           )}
 
-          {/* Count + label — unnamed fish group */}
           {isFishGroup && (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -363,7 +456,6 @@ export default function AddAnimal() {
             </div>
           )}
 
-          {/* Name — non-fish or named fish individual */}
           {!isFishGroup && (
             <div>
               <label className="label">
@@ -452,7 +544,6 @@ export default function AddAnimal() {
             {selectedSpecies ? 'Pre-filled from species data — adjust as needed.' : 'Set care intervals for reminders.'}
           </p>
 
-          {/* Feeding — always shown */}
           <div>
             <label className="label">Feeding Interval (days) <span className="text-red-400">*</span></label>
             <input
@@ -464,7 +555,6 @@ export default function AddAnimal() {
           </div>
 
           {isFish ? (
-            /* ── Fish-specific fields ──────────────── */
             <>
               <div>
                 <label className="label">Water Change Interval (days)</label>
@@ -477,7 +567,6 @@ export default function AddAnimal() {
                 />
               </div>
 
-              {/* Additives & treatments */}
               <div>
                 <label className="label">Additives &amp; Treatments</label>
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-3">
@@ -545,12 +634,12 @@ export default function AddAnimal() {
               </div>
             </>
           ) : (
-            /* ── Non-fish fields ──────────────────── */
             <>
+              {/* ── Misting ── */}
               <div>
                 <label className="label">Misting</label>
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-3">
-                  {/* Manual / Automatic */}
+                  {/* Manual / Automatic toggle */}
                   <div className="flex gap-2">
                     {(['manual', 'automatic'] as const).map(t => (
                       <button
@@ -558,7 +647,7 @@ export default function AddAnimal() {
                         type="button"
                         onClick={() => setMistingType(t)}
                         className={cn(
-                          'flex-1 py-1.5 text-sm rounded-lg border capitalize transition-colors',
+                          'flex-1 py-2 text-sm rounded-lg border capitalize transition-colors',
                           mistingType === t
                             ? 'border-emerald-500 text-emerald-300 bg-emerald-500/10'
                             : 'border-gray-700 text-gray-500 hover:bg-gray-800'
@@ -569,7 +658,7 @@ export default function AddAnimal() {
                     ))}
                   </div>
 
-                  {/* Schedule type */}
+                  {/* Schedule type selector */}
                   <div className="flex gap-2">
                     {(['none', 'interval', 'times'] as const).map(s => (
                       <button
@@ -577,39 +666,49 @@ export default function AddAnimal() {
                         type="button"
                         onClick={() => setMistingSchedule(s)}
                         className={cn(
-                          'flex-1 py-1.5 text-xs rounded-lg border capitalize transition-colors',
+                          'flex-1 py-2 text-xs rounded-lg border transition-colors',
                           mistingSchedule === s
                             ? 'border-blue-500 text-blue-300 bg-blue-500/10'
                             : 'border-gray-700 text-gray-500 hover:bg-gray-800'
                         )}
                       >
-                        {s === 'none' ? 'No schedule' : s === 'interval' ? 'Every X' : 'Set times'}
+                        {s === 'none' ? 'No schedule' : s === 'interval' ? 'Interval' : 'Set times'}
                       </button>
                     ))}
                   </div>
 
-                  {/* Interval — number + unit side by side */}
+                  {/* Interval fields — 2-col grid so both are equal and visible */}
                   {mistingSchedule === 'interval' && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1.5">Mist every:</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="e.g. 12"
-                          value={mistingInterval}
-                          onChange={e => setMistingInterval(e.target.value)}
-                          className="input-field flex-1"
-                        />
-                        <select
-                          value={mistingUnit}
-                          onChange={e => setMistingUnit(e.target.value as 'hours' | 'days')}
-                          className="input-field w-28"
-                        >
-                          <option value="hours">Hours</option>
-                          <option value="days">Days</option>
-                        </select>
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="label">Every</label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="12"
+                            value={mistingInterval}
+                            onChange={e => setMistingInterval(e.target.value)}
+                            className="input-field"
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Unit</label>
+                          <select
+                            value={mistingUnit}
+                            onChange={e => setMistingUnit(e.target.value as 'hours' | 'days')}
+                            className="input-field"
+                          >
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                          </select>
+                        </div>
                       </div>
+                      {mistingInterval && (
+                        <p className="text-xs text-blue-400">
+                          Mist every {mistingInterval} {mistingUnit}
+                        </p>
+                      )}
                     </div>
                   )}
 

@@ -69,6 +69,7 @@ export interface Enclosure {
   lastSubstrateClean?: string;
   lastFullClean?: string;
   notes?: string;
+  photos?: import('./photo').AppPhoto[];
   createdAt: string;
   updatedAt: string;
 }

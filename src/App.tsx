@@ -25,6 +25,7 @@ const Breeding = lazy(() => import('@/pages/Breeding'))
 const Expenses = lazy(() => import('@/pages/Expenses'))
 const Export = lazy(() => import('@/pages/Export'))
 const Settings = lazy(() => import('@/pages/Settings'))
+const PhotoLibrary = lazy(() => import('@/pages/Photos'))
 
 function PageLoader() {
   return (
@@ -111,6 +112,9 @@ function AppRoutes() {
           } />
           <Route path="settings" element={
             <Suspense fallback={<PageLoader />}><Settings /></Suspense>
+          } />
+          <Route path="photos" element={
+            <Suspense fallback={<PageLoader />}><PhotoLibrary /></Suspense>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
