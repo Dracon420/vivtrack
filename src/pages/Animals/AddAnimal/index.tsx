@@ -32,7 +32,7 @@ type ScheduleValues = z.infer<typeof scheduleSchema>
 
 const classColors: Record<SpeciesTemplate['animalClass'], string> = {
   reptile: 'text-emerald-400', amphibian: 'text-blue-400',
-  invertebrate: 'text-amber-400', mammal: 'text-pink-400', bird: 'text-purple-400',
+  invertebrate: 'text-amber-400', mammal: 'text-pink-400', bird: 'text-purple-400', fish: 'text-cyan-400',
 }
 
 function SpeciesCard({ s, selected, onClick }: { s: SpeciesTemplate; selected: boolean; onClick: () => void }) {

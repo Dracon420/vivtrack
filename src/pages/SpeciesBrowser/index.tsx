@@ -6,7 +6,7 @@ import type { SpeciesTemplate } from '@/types'
 import { cn } from '@/lib/utils'
 
 const classEmoji: Record<SpeciesTemplate['animalClass'], string> = {
-  reptile: '🦎', amphibian: '🐸', invertebrate: '🕷️', mammal: '🐹', bird: '🦜',
+  reptile: '🦎', amphibian: '🐸', invertebrate: '🕷️', mammal: '🐹', bird: '🦜', fish: '🐠',
 }
 
 export default function SpeciesBrowser() {
