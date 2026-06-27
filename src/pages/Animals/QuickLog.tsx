@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { ArrowLeft, Check } from 'lucide-react'
 import { useAnimal } from '@/db/hooks/useAnimals'
 import { addCareEvent } from '@/db/hooks/useCareEvents'
+import { useFeederColonies, updateFeederColony, addColonyLogEvent } from '@/db/hooks/useColonies'
 import { nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { CareEventType, FeedingResult, ShedResult } from '@/types'
@@ -49,11 +50,16 @@ export default function QuickLog() {
   const [eventType, setEventType] = useState<CareEventType>(defaultType)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [selectedColonyId, setSelectedColonyId] = useState('')
+
+  const feeders = useFeederColonies()
+  const liveColonies = feeders?.filter(c => c.type !== 'frozen_prey') ?? []
+  const frozenItems = feeders?.filter(c => c.type === 'frozen_prey') ?? []
 
   const now = new Date()
   const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { occurredAt: localNow },
   })
@@ -76,6 +82,24 @@ export default function QuickLog() {
         handlingDurationMinutes: data.handlingDurationMinutes,
         humidityAfter: data.humidityAfter,
       })
+
+      if (eventType === 'feeding' && selectedColonyId) {
+        const colony = feeders?.find(c => c.id === selectedColonyId)
+        if (colony) {
+          const qty = data.feedingQuantity ?? 1
+          const newCount = Math.max(0, (colony.estimatedCount ?? 0) - qty)
+          await updateFeederColony(selectedColonyId, { estimatedCount: newCount })
+          await addColonyLogEvent({
+            colonyId: selectedColonyId,
+            colonyType: 'feeder',
+            eventType: 'harvest',
+            occurredAt: new Date(data.occurredAt).toISOString(),
+            harvestQuantity: qty,
+            countAfter: newCount,
+          })
+        }
+      }
+
       setSaved(true)
       setTimeout(() => navigate(`/animals/${id}`), 600)
     } finally {
@@ -134,6 +158,47 @@ export default function QuickLog() {
         {/* Feeding fields */}
         {eventType === 'feeding' && (
           <>
+            {(liveColonies.length > 0 || frozenItems.length > 0) && (
+              <div>
+                <label className="text-xs text-gray-500 font-medium uppercase tracking-wider block mb-1.5">From Colony</label>
+                <select
+                  value={selectedColonyId}
+                  onChange={e => {
+                    const cid = e.target.value
+                    setSelectedColonyId(cid)
+                    if (cid) {
+                      const colony = feeders?.find(c => c.id === cid)
+                      if (colony) setValue('feedingItem', colony.name)
+                    }
+                  }}
+                  className="input-field"
+                >
+                  <option value="">None (manual entry)</option>
+                  {liveColonies.length > 0 && (
+                    <optgroup label="Live Feeders">
+                      {liveColonies.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.estimatedCount !== undefined ? ` (${c.estimatedCount})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {frozenItems.length > 0 && (
+                    <optgroup label="Frozen Prey">
+                      {frozenItems.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.estimatedCount !== undefined ? ` (${c.estimatedCount})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {selectedColonyId && (() => {
+                  const col = feeders?.find(c => c.id === selectedColonyId)
+                  return col ? <p className="text-xs text-emerald-400 mt-1">Stock will be reduced by the quantity logged.</p> : null
+                })()}
+              </div>
+            )}
             <div>
               <label className="text-xs text-gray-500 font-medium uppercase tracking-wider block mb-1.5">Prey / Food Item</label>
               <input type="text" placeholder="e.g. Medium rat, Large dubia x5" {...register('feedingItem')} className="input-field" />
