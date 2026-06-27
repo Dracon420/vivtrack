@@ -1,21 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, AlertTriangle, Clock, CheckCircle2, Bug, Flame, Settings, X, Snowflake } from 'lucide-react'
+import { Plus, CheckCircle2, Bug, Flame, Settings, X, Snowflake, ChevronRight } from 'lucide-react'
 import { useDashboardTasks } from '@/hooks/useDashboardTasks'
 import { useAnimals } from '@/db/hooks/useAnimals'
+import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { useFeederColonies } from '@/db/hooks/useColonies'
 import { useAllRecentCareEvents } from '@/db/hooks/useCareEvents'
 import { useUIStore } from '@/store/uiStore'
-import { addCareEvent } from '@/db/hooks/useCareEvents'
-import { formatDate, timeAgo } from '@/utils/dateHelpers'
+import { displayDims, displayTemp } from '@/utils/units'
+import { loadSpecies } from '@/utils/species'
+import { formatDate, timeAgo, daysAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { DashboardTask } from '@/hooks/useDashboardTasks'
+import type { SpeciesTemplate } from '@/types'
 
 const urgencyConfig = {
-  overdue: { icon: <AlertTriangle size={14} />, label: 'OVERDUE', bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', badge: 'bg-red-500/20 text-red-300' },
-  today:   { icon: <Clock size={14} />,         label: 'DUE TODAY', bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', badge: 'bg-amber-500/20 text-amber-300' },
-  soon:    { icon: <Clock size={14} />,         label: 'DUE SOON', bg: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-400', badge: 'bg-blue-500/20 text-blue-300' },
-  ok:      { icon: <CheckCircle2 size={14} />,  label: 'OK', bg: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400', badge: 'bg-emerald-500/20 text-emerald-300' },
+  overdue: { label: 'OVERDUE', bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', badge: 'bg-red-500/20 text-red-300' },
+  today:   { label: 'DUE TODAY', bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', badge: 'bg-amber-500/20 text-amber-300' },
+  soon:    { label: 'DUE SOON', bg: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-400', badge: 'bg-blue-500/20 text-blue-300' },
+  ok:      { label: 'OK', bg: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400', badge: 'bg-emerald-500/20 text-emerald-300' },
 }
 
 const eventIcon: Record<string, string> = {
@@ -24,6 +27,20 @@ const eventIcon: Record<string, string> = {
   medication_dose: '💊', vet_visit: '🏥', note: '📝',
   brumation_check: '❄️', temperature_check: '🌡️', humidity_check: '☁️',
   soil_rehydration: '🌱', photo: '📷',
+}
+
+function getAnimalEmoji(species: string): string {
+  const low = species.toLowerCase()
+  if (low.includes('python') || low.includes('boa') || low.includes('snake') || low.includes('corn') || low.includes('king')) return '🐍'
+  if (low.includes('gecko') || low.includes('dragon') || low.includes('skink') || low.includes('iguana') || low.includes('monitor') || low.includes('tegu')) return '🦎'
+  if (low.includes('tortoise') || low.includes('turtle')) return '🐢'
+  if (low.includes('frog') || low.includes('toad')) return '🐸'
+  if (low.includes('tarantula')) return '🕷️'
+  if (low.includes('scorpion')) return '🦂'
+  if (low.includes('hedgehog')) return '🦔'
+  if (low.includes('ferret')) return '🦡'
+  if (low.includes('parrot') || low.includes('conure') || low.includes('cockatiel')) return '🦜'
+  return '🐾'
 }
 
 function TaskCard({ task, onLog }: { task: DashboardTask; onLog: () => void }) {
@@ -57,38 +74,26 @@ function TaskCard({ task, onLog }: { task: DashboardTask; onLog: () => void }) {
   )
 }
 
-function StatCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
+function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex-1">
-      <p className="text-2xl font-bold text-gray-100">{value}</p>
-      <p className="text-xs text-gray-400 mt-0.5">{label}</p>
-      {sub && <p className="text-xs text-emerald-400 mt-0.5">{sub}</p>}
-    </div>
+    <button onClick={() => onChange(!value)}
+      className={cn('w-11 h-6 rounded-full transition-colors relative shrink-0', value ? 'bg-emerald-500' : 'bg-gray-600')}>
+      <span className={cn('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', value ? 'left-6' : 'left-1')} />
+    </button>
   )
 }
 
-function getAnimalEmoji(species: string): string {
-  const low = species.toLowerCase()
-  if (low.includes('python') || low.includes('boa') || low.includes('snake') || low.includes('corn') || low.includes('king')) return '🐍'
-  if (low.includes('gecko') || low.includes('dragon') || low.includes('skink') || low.includes('iguana') || low.includes('monitor') || low.includes('tegu')) return '🦎'
-  if (low.includes('tortoise') || low.includes('turtle')) return '🐢'
-  if (low.includes('frog') || low.includes('toad')) return '🐸'
-  if (low.includes('tarantula')) return '🕷️'
-  if (low.includes('scorpion')) return '🦂'
-  if (low.includes('hedgehog')) return '🦔'
-  if (low.includes('ferret')) return '🦡'
-  if (low.includes('parrot') || low.includes('conure') || low.includes('cockatiel')) return '🦜'
-  return '🐾'
-}
-
-function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+function SectionHeader({ title, linkTo, linkLabel }: { title: string; linkTo?: string; linkLabel?: string }) {
+  const navigate = useNavigate()
   return (
-    <button
-      onClick={() => onChange(!value)}
-      className={cn('w-11 h-6 rounded-full transition-colors relative shrink-0', value ? 'bg-emerald-500' : 'bg-gray-600')}
-    >
-      <span className={cn('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all', value ? 'left-6' : 'left-1')} />
-    </button>
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{title}</h2>
+      {linkTo && (
+        <button onClick={() => navigate(linkTo)} className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300">
+          {linkLabel ?? 'See all'} <ChevronRight size={12} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -96,20 +101,38 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const tasks = useDashboardTasks()
   const animals = useAnimals()
+  const enclosures = useEnclosures()
   const feeders = useFeederColonies()
   const recentEvents = useAllRecentCareEvents(8)
-  const { dashboardWidgets, setDashboardWidget } = useUIStore()
+  const { dashboardWidgets, setDashboardWidget, tempUnit, measurementUnit } = useUIStore()
   const [customizing, setCustomizing] = useState(false)
+  const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
+
+  useEffect(() => { loadSpecies().then(setAllSpecies) }, [])
 
   const activeAnimals = animals?.filter(a => a.status === 'active') ?? []
   const overdueCount = tasks?.filter(t => t.urgency === 'overdue').length ?? 0
   const todayCount = tasks?.filter(t => t.urgency === 'today').length ?? 0
-
   const animalMap = new Map(animals?.map(a => [a.id, a]) ?? [])
 
   const lowStockItems = feeders?.filter(f =>
     f.lowStockThreshold !== undefined && (f.estimatedCount ?? 0) < f.lowStockThreshold
   ) ?? []
+
+  // Group animals by enclosureId for enclosure widget
+  const enclosureAnimalsMap = new Map<string, typeof activeAnimals>()
+  animals?.forEach(a => {
+    if (!a.enclosureId) return
+    const arr = enclosureAnimalsMap.get(a.enclosureId) ?? []
+    arr.push(a)
+    enclosureAnimalsMap.set(a.enclosureId, arr)
+  })
+
+  // Unique matched species for active animals
+  const uniqueSpeciesIds = [...new Set(activeAnimals.map(a => a.species))]
+  const matchedSpecies = uniqueSpeciesIds
+    .map(id => allSpecies.find(s => s.id === id))
+    .filter((s): s is SpeciesTemplate => Boolean(s))
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
@@ -120,6 +143,8 @@ export default function Dashboard() {
 
   const widgetDefs = [
     { key: 'animalQuickAccess' as const, label: 'Animal Quick Access', desc: 'Tap-to-profile grid of your animals' },
+    { key: 'enclosureList' as const, label: 'Enclosure List', desc: 'All enclosures with occupants & status' },
+    { key: 'speciesGuides' as const, label: 'Species Care Guides', desc: 'Key care info for your active species' },
     { key: 'recentActivity' as const, label: 'Recent Activity', desc: 'Last 8 care events across all animals' },
     { key: 'colonyAlerts' as const, label: 'Colony & Frozen Alerts', desc: 'Low stock warnings for feeders' },
   ]
@@ -157,22 +182,34 @@ export default function Dashboard() {
       )}
 
       {/* Stats row */}
-      <div className="px-4 flex gap-3 mb-6">
-        <StatCard label="Active Animals" value={activeAnimals.length} />
-        <StatCard label="Tasks Due" value={overdueCount + todayCount} sub={overdueCount > 0 ? `${overdueCount} overdue` : undefined} />
+      <div className="px-4 grid grid-cols-3 gap-2 mb-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+          <p className="text-xl font-bold text-gray-100">{activeAnimals.length}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Animals</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+          <p className="text-xl font-bold text-gray-100">{enclosures?.length ?? 0}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Enclosures</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+          <p className={cn('text-xl font-bold', overdueCount > 0 ? 'text-red-400' : 'text-gray-100')}>
+            {overdueCount + todayCount}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">Tasks Due</p>
+          {overdueCount > 0 && <p className="text-xs text-red-400 mt-0.5">{overdueCount} overdue</p>}
+        </div>
       </div>
 
       {/* Animal Quick Access */}
       {dashboardWidgets.animalQuickAccess && activeAnimals.length > 0 && (
         <div className="mb-6">
-          <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider px-4 mb-3">Animals</p>
+          <div className="px-4">
+            <SectionHeader title="Animals" linkTo="/animals" linkLabel="All animals" />
+          </div>
           <div className="flex gap-3 px-4 overflow-x-auto pb-2">
             {activeAnimals.map(a => (
-              <button
-                key={a.id}
-                onClick={() => navigate(`/animals/${a.id}`)}
-                className="flex flex-col items-center gap-1.5 shrink-0 group"
-              >
+              <button key={a.id} onClick={() => navigate(`/animals/${a.id}`)}
+                className="flex flex-col items-center gap-1.5 shrink-0 group">
                 <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border-2 border-gray-700 group-hover:border-emerald-500/60 transition-colors flex items-center justify-center text-2xl">
                   {a.thumbnailBase64
                     ? <img src={a.thumbnailBase64} className="w-full h-full object-cover" />
@@ -181,10 +218,7 @@ export default function Dashboard() {
                 <p className="text-xs text-gray-400 max-w-[64px] truncate text-center group-hover:text-gray-200">{a.name}</p>
               </button>
             ))}
-            <button
-              onClick={() => navigate('/animals/add')}
-              className="flex flex-col items-center gap-1.5 shrink-0"
-            >
+            <button onClick={() => navigate('/animals/add')} className="flex flex-col items-center gap-1.5 shrink-0">
               <div className="w-16 h-16 rounded-full bg-gray-800 border-2 border-dashed border-gray-700 hover:border-emerald-500/60 transition-colors flex items-center justify-center text-gray-600 hover:text-emerald-400">
                 <Plus size={22} />
               </div>
@@ -208,10 +242,8 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Care Tasks</h2>
-            {tasks.map(task => (
-              <TaskCard key={task.id} task={task} onLog={() => handleLog(task)} />
-            ))}
+            <SectionHeader title="Care Tasks" />
+            {tasks.map(task => <TaskCard key={task.id} task={task} onLog={() => handleLog(task)} />)}
           </div>
         )}
 
@@ -220,20 +252,111 @@ export default function Dashboard() {
             <p className="text-4xl mb-3">🦎</p>
             <p className="text-gray-200 font-semibold text-lg">No animals yet</p>
             <p className="text-gray-500 text-sm mt-1 mb-4">Add your first animal to start tracking care.</p>
-            <button
-              onClick={() => navigate('/animals/add')}
-              className="bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors"
-            >
+            <button onClick={() => navigate('/animals/add')}
+              className="bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
               Add First Animal
             </button>
           </div>
         )}
       </div>
 
+      {/* Enclosure List */}
+      {dashboardWidgets.enclosureList && (enclosures?.length ?? 0) > 0 && (
+        <div className="px-4 mb-6">
+          <SectionHeader title="Enclosures" linkTo="/enclosures" linkLabel="Manage" />
+          <div className="space-y-2">
+            {enclosures!.map(enc => {
+              const occupants = enclosureAnimalsMap.get(enc.id) ?? []
+              const cleanDays = enc.lastSubstrateClean ? daysAgo(enc.lastSubstrateClean) : null
+              const cleanUrgency = cleanDays === null ? 'text-red-400' : cleanDays < 14 ? 'text-emerald-400' : cleanDays < 30 ? 'text-amber-400' : 'text-red-400'
+              const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
+              return (
+                <button key={enc.id} onClick={() => navigate(`/enclosures/${enc.id}`)}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-lg shrink-0">🏠</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-100 truncate">{enc.name}</p>
+                    {occupants.length > 0 ? (
+                      <p className="text-xs text-emerald-400 truncate">{occupants.map(a => a.name).join(', ')}</p>
+                    ) : (
+                      <p className="text-xs text-gray-600">Unoccupied</p>
+                    )}
+                    <p className="text-xs text-gray-600 mt-0.5">{dims}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={cn('text-xs font-medium', cleanUrgency)}>
+                      {cleanDays === null ? 'Never cleaned' : `${cleanDays}d ago`}
+                    </p>
+                    {enc.temperatureZones[0] && (
+                      <p className="text-xs text-gray-500 mt-0.5">{displayTemp(enc.temperatureZones[0].targetMax, tempUnit)}</p>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+            <button onClick={() => navigate('/enclosures/add')}
+              className="w-full border border-dashed border-gray-700 rounded-xl p-3 text-gray-600 text-sm hover:border-emerald-500/40 hover:text-emerald-400 transition-colors flex items-center justify-center gap-2">
+              <Plus size={14} /> Add Enclosure
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Species Care Guides */}
+      {dashboardWidgets.speciesGuides && matchedSpecies.length > 0 && (
+        <div className="px-4 mb-6">
+          <SectionHeader title="Species Care Guides" linkTo="/species" linkLabel="Browse all" />
+          <div className="space-y-3">
+            {matchedSpecies.map(s => (
+              <button key={s.id} onClick={() => navigate(`/species/${s.id}`)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="font-semibold text-gray-100">{s.commonName}</p>
+                    <p className="text-xs text-gray-500 italic">{s.scientificName}</p>
+                  </div>
+                  <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0',
+                    s.careLevel === 'beginner' ? 'bg-emerald-500/20 text-emerald-300'
+                    : s.careLevel === 'intermediate' ? 'bg-blue-500/20 text-blue-300'
+                    : 'bg-amber-500/20 text-amber-300'
+                  )}>{s.careLevel}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span>🌡️</span>
+                    <span className="text-gray-400">
+                      {displayTemp(s.temperature.warmSideCelsius[0], tempUnit)}–{displayTemp((s.temperature.baskingCelsius ?? s.temperature.warmSideCelsius)[1], tempUnit)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span>💧</span>
+                    <span className="text-gray-400">{s.humidity.min}–{s.humidity.max}%</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span>🍖</span>
+                    <span className="text-gray-400">Every {s.feeding.frequencyDays}d</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span>☀️</span>
+                    <span className="text-gray-400">
+                      {s.lighting.uvbRequired ? `UVB ${s.lighting.uvbStrength ?? 'required'}` : 'No UVB'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 col-span-2">
+                    <span>⏳</span>
+                    <span className="text-gray-400">{s.lifespanYears[0]}–{s.lifespanYears[1]} yr lifespan</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Colony / Frozen Alerts */}
       {dashboardWidgets.colonyAlerts && lowStockItems.length > 0 && (
         <div className="px-4 mb-6">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Low Stock Alerts</h2>
+          <SectionHeader title="Low Stock Alerts" />
           <div className="space-y-2">
             {lowStockItems.map(item => (
               <div key={item.id} className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -254,18 +377,15 @@ export default function Dashboard() {
       {/* Recent Activity */}
       {dashboardWidgets.recentActivity && (recentEvents?.length ?? 0) > 0 && (
         <div className="px-4 mb-6">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Recent Activity</h2>
+          <SectionHeader title="Recent Activity" />
           <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden">
             {recentEvents!.map(event => {
               const animal = animalMap.get(event.animalId)
               const icon = eventIcon[event.type] ?? '📋'
               const label = event.type.replace(/_/g, ' ')
               return (
-                <button
-                  key={event.id}
-                  onClick={() => animal && navigate(`/animals/${animal.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors text-left"
-                >
+                <button key={event.id} onClick={() => animal && navigate(`/animals/${animal.id}`)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors text-left">
                   <span className="text-lg shrink-0">{icon}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-200 capitalize">{label}</p>
@@ -280,11 +400,9 @@ export default function Dashboard() {
       )}
 
       {/* FAB */}
-      <button
-        onClick={() => navigate('/animals/add')}
+      <button onClick={() => navigate('/animals/add')}
         className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-30"
-        aria-label="Add animal"
-      >
+        aria-label="Add animal">
         <Plus size={24} />
       </button>
     </div>
