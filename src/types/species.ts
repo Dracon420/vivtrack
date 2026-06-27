@@ -1,7 +1,7 @@
 import type { SubstrateType } from './enclosure'
 
 export type CareLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
-export type AnimalClass = 'reptile' | 'amphibian' | 'invertebrate' | 'mammal' | 'bird';
+export type AnimalClass = 'reptile' | 'amphibian' | 'invertebrate' | 'mammal' | 'bird' | 'fish';
 export type AnimalOrder =
   | 'snake'
   | 'lizard'
@@ -17,7 +17,14 @@ export type AnimalOrder =
   | 'mustelid'
   | 'psittacine'
   | 'softbill'
-  | 'gastropod';
+  | 'gastropod'
+  | 'betta'
+  | 'cichlid'
+  | 'tetra'
+  | 'livebearer'
+  | 'catfish'
+  | 'goldfish'
+  | 'marine_fish';
 
 export interface SpeciesTemplate {
   id: string;

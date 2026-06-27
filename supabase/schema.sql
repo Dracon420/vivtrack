@@ -1,5 +1,16 @@
--- VivTrack Database Schema
+-- VivTrack Database Schema (safe to re-run)
 -- Run this in the Supabase SQL Editor: https://supabase.com/dashboard/project/qdtokactmtyrpomfayga/sql/new
+
+-- Drop existing policies so re-run doesn't error
+drop policy if exists "Users own their animals" on public.animals;
+drop policy if exists "Users own their enclosures" on public.enclosures;
+drop policy if exists "Users own their care events" on public.care_events;
+drop policy if exists "Users own their care schedules" on public.animal_care_schedules;
+drop policy if exists "Users own their weight records" on public.weight_records;
+drop policy if exists "Users own their medications" on public.medications;
+drop policy if exists "Users own their feeder colonies" on public.feeder_colonies;
+drop policy if exists "Users own their CUC cultures" on public.cuc_cultures;
+drop policy if exists "Users own their colony events" on public.colony_log_events;
 
 -- Animals
 create table if not exists public.animals (
@@ -115,13 +126,26 @@ create policy "Users own their colony events" on public.colony_log_events
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create index if not exists colony_log_events_colony_id_idx on public.colony_log_events (colony_id);
 
--- Enable realtime for all tables
-alter publication supabase_realtime add table public.animals;
-alter publication supabase_realtime add table public.enclosures;
-alter publication supabase_realtime add table public.care_events;
-alter publication supabase_realtime add table public.animal_care_schedules;
-alter publication supabase_realtime add table public.weight_records;
-alter publication supabase_realtime add table public.medications;
-alter publication supabase_realtime add table public.feeder_colonies;
-alter publication supabase_realtime add table public.cuc_cultures;
-alter publication supabase_realtime add table public.colony_log_events;
+-- Plants
+drop policy if exists "Users own their plants" on public.plants;
+create table if not exists public.plants (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  data jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+alter table public.plants enable row level security;
+create policy "Users own their plants" on public.plants
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Enable realtime (ignore if already added)
+do $$ begin alter publication supabase_realtime add table public.animals; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.enclosures; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.care_events; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.animal_care_schedules; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.weight_records; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.medications; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.feeder_colonies; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.cuc_cultures; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.colony_log_events; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.plants; exception when others then null; end $$;
