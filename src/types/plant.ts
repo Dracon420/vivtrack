@@ -1,3 +1,29 @@
+export type LightLevel = 'low' | 'medium' | 'high' | 'very_high' | 'bright_indirect'
+export type WaterNeeds = 'low' | 'moderate' | 'high' | 'aquatic'
+
+export interface PlantSpeciesTemplate {
+  id: string
+  commonName: string
+  scientificName: string
+  alternateNames?: string[]
+  plantType: PlantType
+  careLevel: 'beginner' | 'intermediate' | 'advanced'
+  light: LightLevel
+  water: WaterNeeds
+  humidity: 'low' | 'medium' | 'high'
+  temperatureC: [number, number]
+  toxicity: {
+    animalSafe: boolean
+    safeFor?: string[]
+    toxicTo?: string[]
+    notes?: string
+  }
+  enclosureTypes?: string[]
+  propagation?: string[]
+  specialNotes?: string[]
+  wateringFrequencyDays: [number, number] | null
+}
+
 export type PlantType =
   | 'tropical'
   | 'succulent'
@@ -29,6 +55,8 @@ export interface Plant {
   notes?: string;
   thumbnailBase64?: string;
   acquisitionDate?: string;
+  speciesId?: string;
+  animalSafe?: boolean;
   createdAt: string;
   updatedAt: string;
 }

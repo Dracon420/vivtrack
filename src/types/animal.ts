@@ -22,6 +22,8 @@ export interface Animal {
   brumationStartDate?: string;
   brumationEndDate?: string;
   notes?: string;
+  groupCount?: number;
+  isGroup?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +54,7 @@ export interface AnimalCareSchedule {
   soilRehydrationIntervalDays?: number;
   substrateCleanIntervalDays: number;
   medicationReminders: boolean;
+  additives?: string[];
   quietHoursStart?: string;
   quietHoursEnd?: string;
   updatedAt: string;

@@ -49,7 +49,7 @@ export default function BottomNav() {
             <X size={20} />
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-2 px-4 pb-8">
+        <div className="grid grid-cols-3 gap-2 px-4 pb-safe">
           {MORE_ITEMS.map(item => (
             <button key={item.to} onClick={() => go(item.to)}
               className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-gray-800 hover:bg-gray-700 active:scale-95 transition-all">

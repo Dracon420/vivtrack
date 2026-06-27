@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { Plus, Search, ArrowUpDown, Check, Droplets, Sprout } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, Search, ArrowUpDown, Check, Droplets, Sprout, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { usePlants, addPlant, updatePlant } from '@/db/hooks/usePlants'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
+import { loadPlantSpecies, toxicityLabel } from '@/utils/plantSpecies'
 import { timeAgo, nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { Plant, PlantType, PlantStatus } from '@/types'
-import { useRef, useEffect } from 'react'
+import type { Plant, PlantType, PlantStatus, PlantSpeciesTemplate } from '@/types'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PLANT_TYPE_EMOJI: Record<PlantType, string> = {
@@ -38,6 +38,25 @@ const STATUS_FILTERS = [
   { key: 'dormant' as const, label: 'Dormant' },
   { key: 'watering_due' as const, label: '💧 Water Due' },
 ]
+
+// Map plant species light level → Plant lightNeeds
+function mapLight(light: PlantSpeciesTemplate['light']): Plant['lightNeeds'] {
+  if (light === 'very_high') return 'full_sun'
+  if (light === 'high') return 'bright_indirect'
+  if (light === 'bright_indirect') return 'bright_indirect'
+  if (light === 'medium') return 'medium'
+  return 'low'
+}
+
+// Map plant species plantType → PlantType
+function mapType(plantType: string): PlantType {
+  const map: Record<string, PlantType> = {
+    aquatic: 'aquatic', tropical: 'tropical', succulent: 'succulent',
+    moss: 'moss', carnivorous: 'carnivorous', fern: 'fern',
+    bromeliad: 'bromeliad', epiphyte: 'epiphyte', vine: 'vine',
+  }
+  return map[plantType] ?? 'other'
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function isWateringDue(plant: Plant): boolean {
@@ -90,9 +109,17 @@ function SortDropdown({ value, onChange }: { value: 'name' | 'watered' | 'status
   )
 }
 
+function animalSafeBadge(safe: boolean | undefined): { label: string; color: 'emerald' | 'red' } | null {
+  if (safe === true)  return { label: 'Animal Safe', color: 'emerald' }
+  if (safe === false) return { label: 'Caution', color: 'red' }
+  return null
+}
+
 // ── Plant Card ─────────────────────────────────────────────────────────────
 function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureName?: string; onWater: () => void }) {
   const due = isWateringDue(plant)
+  const tox = animalSafeBadge(plant.animalSafe)
+
   return (
     <div className={cn('bg-gray-900 border rounded-2xl p-4', due ? 'border-blue-500/40' : 'border-gray-800')}>
       <div className="flex items-start gap-3 mb-3">
@@ -108,9 +135,19 @@ function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureN
               <p className="text-xs text-gray-500 italic truncate">{plant.species}</p>
               {plant.variety && <p className="text-xs text-emerald-400 truncate">{plant.variety}</p>}
             </div>
-            <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-medium capitalize shrink-0', PLANT_STATUS_COLORS[plant.status])}>
-              {plant.status}
-            </span>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-medium capitalize', PLANT_STATUS_COLORS[plant.status])}>
+                {plant.status}
+              </span>
+              {tox && (
+                <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5',
+                  tox.color === 'emerald' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
+                )}>
+                  {tox.color === 'emerald' ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
+                  {tox.label}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -164,36 +201,148 @@ function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureN
 
 // ── Add Plant Form ─────────────────────────────────────────────────────────
 function AddPlantForm({ onClose }: { onClose: () => void }) {
+  const [speciesList, setSpeciesList] = useState<PlantSpeciesTemplate[]>([])
+  const [speciesSearch, setSpeciesSearch] = useState('')
+  const [selectedSpecies, setSelectedSpecies] = useState<PlantSpeciesTemplate | null>(null)
+  const [speciesDropOpen, setSpeciesDropOpen] = useState(false)
+  const speciesRef = useRef<HTMLDivElement>(null)
+
   const [name, setName] = useState('')
-  const [species, setSpecies] = useState('')
+  const [customSpecies, setCustomSpecies] = useState('')
   const [variety, setVariety] = useState('')
   const [type, setType] = useState<PlantType>('tropical')
   const [light, setLight] = useState<Plant['lightNeeds']>('medium')
   const [waterDays, setWaterDays] = useState('')
+  const [animalSafe, setAnimalSafe] = useState<boolean | undefined>(undefined)
   const [notes, setNotes] = useState('')
 
+  useEffect(() => { loadPlantSpecies().then(setSpeciesList) }, [])
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (speciesRef.current && !speciesRef.current.contains(e.target as Node)) setSpeciesDropOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const filteredSpecies = speciesSearch
+    ? speciesList.filter(s =>
+        s.commonName.toLowerCase().includes(speciesSearch.toLowerCase()) ||
+        s.scientificName.toLowerCase().includes(speciesSearch.toLowerCase())
+      )
+    : speciesList
+
+  const handleSelectSpecies = (s: PlantSpeciesTemplate) => {
+    setSelectedSpecies(s)
+    setCustomSpecies(s.scientificName)
+    setType(mapType(s.plantType))
+    setLight(mapLight(s.light))
+    if (s.wateringFrequencyDays) setWaterDays(String(s.wateringFrequencyDays[0]))
+    setAnimalSafe(s.toxicity.animalSafe)
+    setSpeciesSearch('')
+    setSpeciesDropOpen(false)
+  }
+
+  const handleClearSpecies = () => {
+    setSelectedSpecies(null)
+    setCustomSpecies('')
+    setSpeciesSearch('')
+    setAnimalSafe(undefined)
+  }
+
   const handleSave = async () => {
-    if (!name || !species) return
+    const speciesName = selectedSpecies ? selectedSpecies.scientificName : customSpecies
+    if (!name || !speciesName) return
     await addPlant({
-      name, species, variety: variety || undefined, type,
+      name, species: speciesName, variety: variety || undefined, type,
       status: 'stable', lightNeeds: light,
       wateringFrequencyDays: waterDays ? parseInt(waterDays) : undefined,
       lastWatered: undefined, lastFertilized: undefined,
       propagationsCount: 0, notes: notes || undefined,
       thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: undefined,
+      speciesId: selectedSpecies?.id,
+      animalSafe,
     })
     onClose()
   }
 
+  const tox = animalSafe !== undefined ? toxicityLabel({ animalSafe }) : null
+
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 space-y-3">
       <p className="text-sm font-semibold text-gray-200">Add Plant</p>
+
+      {/* Species selector */}
+      <div ref={speciesRef} className="relative">
+        <p className="text-xs text-gray-500 mb-1">Select species (optional)</p>
+        {selectedSpecies ? (
+          <div className="flex items-center justify-between bg-gray-700 border border-gray-600 rounded-xl px-3 py-2">
+            <div>
+              <p className="text-sm text-gray-100 font-medium">{selectedSpecies.commonName}</p>
+              <p className="text-xs text-gray-400 italic">{selectedSpecies.scientificName}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {tox && (
+                <span className={cn('text-xs px-1.5 py-0.5 rounded-full flex items-center gap-0.5',
+                  tox.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
+                  tox.color === 'amber'   ? 'bg-amber-500/20 text-amber-400' :
+                                            'bg-red-500/20 text-red-400'
+                )}>
+                  {tox.color === 'emerald' ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
+                  {tox.label}
+                </span>
+              )}
+              <button onClick={handleClearSpecies} className="text-gray-500 hover:text-gray-300 transition-colors">✕</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={speciesSearch}
+              onChange={e => { setSpeciesSearch(e.target.value); setSpeciesDropOpen(true) }}
+              onFocus={() => setSpeciesDropOpen(true)}
+              placeholder="Search species… (or skip for custom)"
+              className="f-input"
+            />
+            {speciesDropOpen && filteredSpecies.length > 0 && (
+              <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-gray-800 border border-gray-600 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                {filteredSpecies.slice(0, 30).map(s => {
+                  const t = toxicityLabel(s.toxicity)
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => handleSelectSpecies(s)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-700 text-left transition-colors border-b border-gray-700/50 last:border-0"
+                    >
+                      <div>
+                        <p className="text-sm text-gray-100">{s.commonName}</p>
+                        <p className="text-xs text-gray-500 italic">{s.scientificName}</p>
+                      </div>
+                      <span className={cn('text-xs px-1.5 py-0.5 rounded-full shrink-0 ml-2',
+                        t.color === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
+                        t.color === 'amber'   ? 'bg-amber-500/20 text-amber-400' :
+                                                'bg-red-500/20 text-red-400'
+                      )}>{t.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <input value={name} onChange={e => setName(e.target.value)} type="text"
-        placeholder="Name / nickname (e.g. Pothos #1)" className="f-input" />
-      <input value={species} onChange={e => setSpecies(e.target.value)} type="text"
-        placeholder="Botanical name (e.g. Epipremnum aureum)" className="f-input" />
+        placeholder="Name / nickname (e.g. Pothos #1) *" className="f-input" />
+
+      {!selectedSpecies && (
+        <input value={customSpecies} onChange={e => setCustomSpecies(e.target.value)} type="text"
+          placeholder="Botanical name (e.g. Epipremnum aureum) *" className="f-input" />
+      )}
+
       <input value={variety} onChange={e => setVariety(e.target.value)} type="text"
         placeholder="Variety / cultivar (optional)" className="f-input" />
+
       <div className="grid grid-cols-2 gap-2">
         <select value={type} onChange={e => setType(e.target.value as PlantType)} className="f-input">
           <option value="tropical">🌿 Tropical</option>
@@ -214,12 +363,26 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
           <option value="full_sun">Full sun</option>
         </select>
       </div>
+
       <input value={waterDays} onChange={e => setWaterDays(e.target.value)} type="number" min="1"
         placeholder="Water every X days (optional)" className="f-input" />
       <input value={notes} onChange={e => setNotes(e.target.value)} type="text"
         placeholder="Notes (optional)" className="f-input" />
+
+      {/* Care tip from selected species */}
+      {selectedSpecies?.specialNotes && selectedSpecies.specialNotes.length > 0 && (
+        <div className="bg-gray-700/50 rounded-xl p-3">
+          <p className="text-xs text-gray-400 font-medium mb-1">Care tips</p>
+          <ul className="text-xs text-gray-500 space-y-0.5">
+            {selectedSpecies.specialNotes.slice(0, 3).map((n, i) => (
+              <li key={i}>· {n}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex gap-2">
-        <button onClick={handleSave} disabled={!name || !species}
+        <button onClick={handleSave} disabled={!name || (!selectedSpecies && !customSpecies)}
           className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl disabled:opacity-40 transition-colors">
           Save Plant
         </button>
