@@ -16,7 +16,7 @@ interface UIState {
   setTempUnit: (unit: 'C' | 'F') => void
   measurementUnit: 'cm' | 'in'
   setMeasurementUnit: (unit: 'cm' | 'in') => void
-  dashboardWidgets: { animalQuickAccess: boolean; recentActivity: boolean; colonyAlerts: boolean; enclosureList: boolean; speciesGuides: boolean }
+  dashboardWidgets: { animalQuickAccess: boolean; enclosureList: boolean; plantQuickAccess: boolean; speciesGuides: boolean; recentActivity: boolean; colonyAlerts: boolean }
   setDashboardWidget: (key: keyof UIState['dashboardWidgets'], value: boolean) => void
 }
 
@@ -35,7 +35,7 @@ export const useUIStore = create<UIState>()(
       setTempUnit: (unit) => set({ tempUnit: unit }),
       measurementUnit: 'cm',
       setMeasurementUnit: (unit) => set({ measurementUnit: unit }),
-      dashboardWidgets: { animalQuickAccess: true, recentActivity: true, colonyAlerts: true, enclosureList: true, speciesGuides: true },
+      dashboardWidgets: { animalQuickAccess: true, enclosureList: true, plantQuickAccess: true, speciesGuides: true, recentActivity: true, colonyAlerts: true },
       setDashboardWidget: (key, value) => set(s => ({ dashboardWidgets: { ...s.dashboardWidgets, [key]: value } })),
     }),
     { name: 'vivtrack-ui' }

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import type { Animal, Enclosure } from '@/types'
 
 type FilterOccupancy = 'all' | 'occupied' | 'unoccupied' | 'needs_clean'
+type FilterType = 'all' | 'terrarium' | 'aquarium' | 'paludarium' | 'vivarium' | 'pond'
 type SortKey = 'name_asc' | 'name_desc' | 'last_cleaned' | 'newest'
 
 const OCCUPANCY_FILTERS: { key: FilterOccupancy; label: string }[] = [
@@ -18,6 +19,19 @@ const OCCUPANCY_FILTERS: { key: FilterOccupancy; label: string }[] = [
   { key: 'unoccupied', label: 'Unoccupied' },
   { key: 'needs_clean', label: 'Needs Clean' },
 ]
+
+const TYPE_FILTERS: { key: FilterType; label: string }[] = [
+  { key: 'all', label: 'All Types' },
+  { key: 'terrarium', label: '🏠 Terrarium' },
+  { key: 'aquarium', label: '🐠 Aquarium' },
+  { key: 'paludarium', label: '🌿 Paludarium' },
+  { key: 'vivarium', label: '🌿 Vivarium' },
+  { key: 'pond', label: '💧 Pond' },
+]
+
+const ENCLOSURE_EMOJI: Record<string, string> = {
+  aquarium: '🐠', paludarium: '🌿', vivarium: '🌿', pond: '💧', terrarium: '🏠', other: '🏠',
+}
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'name_asc', label: 'Name (A → Z)' },
@@ -106,7 +120,10 @@ function EnclosureCard({ enc, animals, onClick, onEdit }: {
     <div onClick={onClick}
       className="w-full text-left bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-[0.98] cursor-pointer">
       <div className="flex items-start justify-between gap-3 mb-2">
-        <p className="font-semibold text-gray-100 truncate flex-1">{enc.name}</p>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="text-lg shrink-0">{enc.enclosureType ? ENCLOSURE_EMOJI[enc.enclosureType] : '🏠'}</span>
+          <p className="font-semibold text-gray-100 truncate">{enc.name}</p>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           {warnings > 0 && (
             <span className="flex items-center gap-1 text-xs text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
@@ -167,6 +184,7 @@ export default function EnclosureList() {
   const animals = useAnimals()
   const [search, setSearch] = useState('')
   const [filterOccupancy, setFilterOccupancy] = useState<FilterOccupancy>('all')
+  const [filterType, setFilterType] = useState<FilterType>('all')
   const [sort, setSort] = useState<SortKey>('name_asc')
 
   const enclosureAnimalsMap = new Map<string, Animal[]>()
@@ -184,6 +202,7 @@ export default function EnclosureList() {
       if (filterOccupancy === 'occupied' && occupants.length === 0) return false
       if (filterOccupancy === 'unoccupied' && occupants.length > 0) return false
       if (filterOccupancy === 'needs_clean' && !needsClean(enc)) return false
+      if (filterType !== 'all' && enc.enclosureType !== filterType) return false
       return true
     }) ?? [],
     sort
@@ -221,12 +240,23 @@ export default function EnclosureList() {
             </div>
           </div>
 
-          {/* Filter pills */}
+          {/* Type filter */}
+          <div className="flex gap-1.5 px-4 mb-2 overflow-x-auto pb-1">
+            {TYPE_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setFilterType(f.key)}
+                className={cn('shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+                  filterType === f.key ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                )}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* Occupancy filter */}
           <div className="flex gap-1.5 px-4 mb-4 overflow-x-auto pb-1">
             {OCCUPANCY_FILTERS.map(f => (
               <button key={f.key} onClick={() => setFilterOccupancy(f.key)}
                 className={cn('shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
-                  filterOccupancy === f.key ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  filterOccupancy === f.key ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 )}>
                 {f.label}
               </button>

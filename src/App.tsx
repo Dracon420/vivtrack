@@ -19,6 +19,7 @@ const Scanner = lazy(() => import('@/pages/Scanner'))
 const ScanRedirect = lazy(() => import('@/pages/Scanner/ScanRedirect'))
 const SpeciesBrowser = lazy(() => import('@/pages/SpeciesBrowser'))
 const SpeciesDetail = lazy(() => import('@/pages/SpeciesBrowser/SpeciesDetail'))
+const Plants = lazy(() => import('@/pages/Plants'))
 const Colonies = lazy(() => import('@/pages/Colonies'))
 const Breeding = lazy(() => import('@/pages/Breeding'))
 const Expenses = lazy(() => import('@/pages/Expenses'))
@@ -92,6 +93,9 @@ function AppRoutes() {
           } />
           <Route path="species/:id" element={
             <Suspense fallback={<PageLoader />}><SpeciesDetail /></Suspense>
+          } />
+          <Route path="plants" element={
+            <Suspense fallback={<PageLoader />}><Plants /></Suspense>
           } />
           <Route path="colonies" element={
             <Suspense fallback={<PageLoader />}><Colonies /></Suspense>

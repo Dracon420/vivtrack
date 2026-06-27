@@ -7,9 +7,20 @@ import { addEnclosure } from '@/db/hooks/useEnclosures'
 import { useUIStore } from '@/store/uiStore'
 import { inToCm, fToC } from '@/utils/units'
 import { useState } from 'react'
+import type { EnclosureType } from '@/types'
+
+const ENCLOSURE_TYPE_OPTS: { value: EnclosureType; label: string }[] = [
+  { value: 'terrarium', label: '🏠 Terrarium' },
+  { value: 'aquarium', label: '🐠 Aquarium' },
+  { value: 'paludarium', label: '🌿 Paludarium' },
+  { value: 'vivarium', label: '🌿 Vivarium' },
+  { value: 'pond', label: '💧 Pond' },
+  { value: 'other', label: '📦 Other' },
+]
 
 const schema = z.object({
   name: z.string().min(1),
+  enclosureType: z.string().optional(),
   lengthCm: z.coerce.number().min(1),
   widthCm: z.coerce.number().min(1),
   heightCm: z.coerce.number().min(1),
@@ -49,6 +60,7 @@ export default function EnclosureForm() {
 
       const enc = await addEnclosure({
         name: data.name,
+        enclosureType: data.enclosureType as EnclosureType | undefined,
         dimensionsLWHcm: [toCm(data.lengthCm), toCm(data.widthCm), toCm(data.heightCm)],
         substrate: [],
         bulbs: [],
@@ -75,6 +87,14 @@ export default function EnclosureForm() {
           <label className="label">Enclosure Name *</label>
           <input {...register('name')} type="text" placeholder="e.g. Ball Python 4x2" className="input-field" />
           {errors.name && <p className="text-red-400 text-xs mt-1">Name is required</p>}
+        </div>
+
+        <div>
+          <label className="label">Type</label>
+          <select {...register('enclosureType')} className="input-field">
+            <option value="">Select type…</option>
+            {ENCLOSURE_TYPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
 
         <div>

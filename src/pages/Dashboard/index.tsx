@@ -6,14 +6,16 @@ import { useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { useFeederColonies } from '@/db/hooks/useColonies'
 import { useAllRecentCareEvents } from '@/db/hooks/useCareEvents'
+import { usePlants } from '@/db/hooks/usePlants'
 import { useUIStore } from '@/store/uiStore'
-import { displayDims, displayTemp } from '@/utils/units'
+import { displayTemp } from '@/utils/units'
 import { loadSpecies } from '@/utils/species'
-import { formatDate, timeAgo, daysAgo } from '@/utils/dateHelpers'
+import { formatDate, timeAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { DashboardTask } from '@/hooks/useDashboardTasks'
-import type { SpeciesTemplate } from '@/types'
+import type { SpeciesTemplate, Plant, Enclosure } from '@/types'
 
+// ── Constants ──────────────────────────────────────────────────────────────
 const urgencyConfig = {
   overdue: { label: 'OVERDUE', bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', badge: 'bg-red-500/20 text-red-300' },
   today:   { label: 'DUE TODAY', bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', badge: 'bg-amber-500/20 text-amber-300' },
@@ -29,20 +31,39 @@ const eventIcon: Record<string, string> = {
   soil_rehydration: '🌱', photo: '📷',
 }
 
+const PLANT_TYPE_EMOJI: Record<string, string> = {
+  tropical: '🌿', succulent: '🪴', bromeliad: '🌺', moss: '🌱',
+  fern: '🌿', carnivorous: '🪤', aquatic: '💧', epiphyte: '🌿',
+  vine: '🌿', other: '🌱',
+}
+
+const ENCLOSURE_EMOJI: Record<string, string> = {
+  aquarium: '🐠', paludarium: '🌿', vivarium: '🌿',
+  pond: '💧', terrarium: '🏠', other: '🏠',
+}
+
 function getAnimalEmoji(species: string): string {
   const low = species.toLowerCase()
   if (low.includes('python') || low.includes('boa') || low.includes('snake') || low.includes('corn') || low.includes('king')) return '🐍'
   if (low.includes('gecko') || low.includes('dragon') || low.includes('skink') || low.includes('iguana') || low.includes('monitor') || low.includes('tegu')) return '🦎'
   if (low.includes('tortoise') || low.includes('turtle')) return '🐢'
-  if (low.includes('frog') || low.includes('toad')) return '🐸'
+  if (low.includes('frog') || low.includes('toad') || low.includes('axolotl') || low.includes('salamander')) return '🐸'
   if (low.includes('tarantula')) return '🕷️'
   if (low.includes('scorpion')) return '🦂'
   if (low.includes('hedgehog')) return '🦔'
   if (low.includes('ferret')) return '🦡'
   if (low.includes('parrot') || low.includes('conure') || low.includes('cockatiel')) return '🦜'
+  if (low.includes('betta') || low.includes('fish') || low.includes('tetra') || low.includes('guppy') || low.includes('oscar') || low.includes('cichlid') || low.includes('pleco') || low.includes('goldfish') || low.includes('koi') || low.includes('clownfish')) return '🐠'
   return '🐾'
 }
 
+function isWateringDue(plant: Plant): boolean {
+  if (!plant.wateringFrequencyDays) return false
+  if (!plant.lastWatered) return true
+  return (Date.now() - new Date(plant.lastWatered).getTime()) / 86400000 >= plant.wateringFrequencyDays
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────
 function TaskCard({ task, onLog }: { task: DashboardTask; onLog: () => void }) {
   const cfg = urgencyConfig[task.urgency]
   const isColony = task.type === 'colony_low_stock'
@@ -86,7 +107,7 @@ function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boole
 function SectionHeader({ title, linkTo, linkLabel }: { title: string; linkTo?: string; linkLabel?: string }) {
   const navigate = useNavigate()
   return (
-    <div className="flex items-center justify-between mb-3">
+    <div className="flex items-center justify-between mb-3 px-4">
       <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{title}</h2>
       {linkTo && (
         <button onClick={() => navigate(linkTo)} className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300">
@@ -97,6 +118,7 @@ function SectionHeader({ title, linkTo, linkLabel }: { title: string; linkTo?: s
   )
 }
 
+// ── Main Page ──────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
   const tasks = useDashboardTasks()
@@ -104,7 +126,8 @@ export default function Dashboard() {
   const enclosures = useEnclosures()
   const feeders = useFeederColonies()
   const recentEvents = useAllRecentCareEvents(8)
-  const { dashboardWidgets, setDashboardWidget, tempUnit, measurementUnit } = useUIStore()
+  const plants = usePlants()
+  const { dashboardWidgets, setDashboardWidget, tempUnit } = useUIStore()
   const [customizing, setCustomizing] = useState(false)
   const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
 
@@ -114,12 +137,13 @@ export default function Dashboard() {
   const overdueCount = tasks?.filter(t => t.urgency === 'overdue').length ?? 0
   const todayCount = tasks?.filter(t => t.urgency === 'today').length ?? 0
   const animalMap = new Map(animals?.map(a => [a.id, a]) ?? [])
+  const plantsDue = (plants ?? []).filter(isWateringDue).length
 
   const lowStockItems = feeders?.filter(f =>
     f.lowStockThreshold !== undefined && (f.estimatedCount ?? 0) < f.lowStockThreshold
   ) ?? []
 
-  // Group animals by enclosureId for enclosure widget
+  // Group animals by enclosureId
   const enclosureAnimalsMap = new Map<string, typeof activeAnimals>()
   animals?.forEach(a => {
     if (!a.enclosureId) return
@@ -128,7 +152,7 @@ export default function Dashboard() {
     enclosureAnimalsMap.set(a.enclosureId, arr)
   })
 
-  // Unique matched species for active animals
+  // Unique species for active animals
   const uniqueSpeciesIds = [...new Set(activeAnimals.map(a => a.species))]
   const matchedSpecies = uniqueSpeciesIds
     .map(id => allSpecies.find(s => s.id === id))
@@ -142,9 +166,10 @@ export default function Dashboard() {
   }
 
   const widgetDefs = [
-    { key: 'animalQuickAccess' as const, label: 'Animal Quick Access', desc: 'Tap-to-profile grid of your animals' },
-    { key: 'enclosureList' as const, label: 'Enclosure List', desc: 'All enclosures with occupants & status' },
-    { key: 'speciesGuides' as const, label: 'Species Care Guides', desc: 'Key care info for your active species' },
+    { key: 'animalQuickAccess' as const, label: 'Animal Quick Access', desc: 'Tap-to-profile row of your animals' },
+    { key: 'enclosureList' as const, label: 'Enclosure Quick Access', desc: 'Side-scroll row of your enclosures' },
+    { key: 'plantQuickAccess' as const, label: 'Plant Quick Access', desc: 'Side-scroll row of your plants' },
+    { key: 'speciesGuides' as const, label: 'Species Care Guides', desc: 'Quick care reference for active species' },
     { key: 'recentActivity' as const, label: 'Recent Activity', desc: 'Last 8 care events across all animals' },
     { key: 'colonyAlerts' as const, label: 'Colony & Frozen Alerts', desc: 'Low stock warnings for feeders' },
   ]
@@ -157,10 +182,8 @@ export default function Dashboard() {
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{today}</p>
           <h1 className="text-2xl font-bold text-gray-100 mt-1">Dashboard</h1>
         </div>
-        <button
-          onClick={() => setCustomizing(c => !c)}
-          className={cn('p-2 rounded-xl transition-colors', customizing ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800')}
-        >
+        <button onClick={() => setCustomizing(c => !c)}
+          className={cn('p-2 rounded-xl transition-colors', customizing ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800')}>
           {customizing ? <X size={18} /> : <Settings size={18} />}
         </button>
       </div>
@@ -196,17 +219,15 @@ export default function Dashboard() {
             {overdueCount + todayCount}
           </p>
           <p className="text-xs text-gray-500 mt-0.5">Tasks Due</p>
-          {overdueCount > 0 && <p className="text-xs text-red-400 mt-0.5">{overdueCount} overdue</p>}
+          {overdueCount > 0 && <p className="text-xs text-red-400">{overdueCount} overdue</p>}
         </div>
       </div>
 
-      {/* Animal Quick Access */}
+      {/* ── Animal Quick Access ── */}
       {dashboardWidgets.animalQuickAccess && activeAnimals.length > 0 && (
         <div className="mb-6">
-          <div className="px-4">
-            <SectionHeader title="Animals" linkTo="/animals" linkLabel="All animals" />
-          </div>
-          <div className="flex gap-3 px-4 overflow-x-auto pb-2">
+          <SectionHeader title="Animals" linkTo="/animals" linkLabel="All animals" />
+          <div className="flex gap-3 px-4 overflow-x-auto pb-2 no-scrollbar">
             {activeAnimals.map(a => (
               <button key={a.id} onClick={() => navigate(`/animals/${a.id}`)}
                 className="flex flex-col items-center gap-1.5 shrink-0 group">
@@ -228,7 +249,102 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Care Tasks */}
+      {/* ── Enclosure Quick Access ── */}
+      {dashboardWidgets.enclosureList && (enclosures?.length ?? 0) > 0 && (
+        <div className="mb-6">
+          <SectionHeader title="Enclosures" linkTo="/enclosures" linkLabel="Manage" />
+          <div className="flex gap-3 px-4 overflow-x-auto pb-2 no-scrollbar">
+            {enclosures!.map(enc => {
+              const occupants = enclosureAnimalsMap.get(enc.id) ?? []
+              const emoji = enc.enclosureType ? (ENCLOSURE_EMOJI[enc.enclosureType] ?? '🏠') : '🏠'
+              return (
+                <button key={enc.id} onClick={() => navigate(`/enclosures/${enc.id}`)}
+                  className="flex flex-col items-center gap-1.5 shrink-0 group">
+                  <div className="relative w-16 h-16 rounded-full bg-gray-800 border-2 border-gray-700 group-hover:border-emerald-500/60 transition-colors flex items-center justify-center text-2xl">
+                    {emoji}
+                    {occupants.length > 0 && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border border-gray-950">
+                        {occupants.length}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 max-w-[64px] truncate text-center group-hover:text-gray-200">{enc.name}</p>
+                </button>
+              )
+            })}
+            <button onClick={() => navigate('/enclosures/add')} className="flex flex-col items-center gap-1.5 shrink-0">
+              <div className="w-16 h-16 rounded-full bg-gray-800 border-2 border-dashed border-gray-700 hover:border-emerald-500/60 transition-colors flex items-center justify-center text-gray-600 hover:text-emerald-400">
+                <Plus size={22} />
+              </div>
+              <p className="text-xs text-gray-600">Add</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Plant Quick Access ── */}
+      {dashboardWidgets.plantQuickAccess && (plants?.length ?? 0) > 0 && (
+        <div className="mb-6">
+          <SectionHeader title="Plants"
+            linkTo="/plants"
+            linkLabel={plantsDue > 0 ? `${plantsDue} due` : 'All plants'} />
+          <div className="flex gap-3 px-4 overflow-x-auto pb-2 no-scrollbar">
+            {(plants ?? []).map(p => {
+              const due = isWateringDue(p)
+              return (
+                <button key={p.id} onClick={() => navigate('/plants')}
+                  className="flex flex-col items-center gap-1.5 shrink-0 group">
+                  <div className={cn('relative w-16 h-16 rounded-full bg-gray-800 border-2 transition-colors flex items-center justify-center text-2xl overflow-hidden',
+                    due ? 'border-blue-500/60' : 'border-gray-700 group-hover:border-green-600/60'
+                  )}>
+                    {p.thumbnailBase64
+                      ? <img src={p.thumbnailBase64} className="w-full h-full object-cover" />
+                      : PLANT_TYPE_EMOJI[p.type] ?? '🌱'}
+                    {due && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-blue-500 text-white flex items-center justify-center rounded-full border border-gray-950 text-[10px]">💧</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 max-w-[64px] truncate text-center group-hover:text-gray-200">{p.name}</p>
+                </button>
+              )
+            })}
+            <button onClick={() => navigate('/plants')} className="flex flex-col items-center gap-1.5 shrink-0">
+              <div className="w-16 h-16 rounded-full bg-gray-800 border-2 border-dashed border-gray-700 hover:border-green-600/60 transition-colors flex items-center justify-center text-gray-600 hover:text-green-400">
+                <Plus size={22} />
+              </div>
+              <p className="text-xs text-gray-600">Add</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Species Care Guides ── */}
+      {dashboardWidgets.speciesGuides && matchedSpecies.length > 0 && (
+        <div className="mb-6">
+          <SectionHeader title="Care Guides" linkTo="/species" linkLabel="Browse all" />
+          <div className="flex gap-3 px-4 overflow-x-auto pb-2 no-scrollbar">
+            {matchedSpecies.map(s => (
+              <button key={s.id} onClick={() => navigate(`/species/${s.id}`)}
+                className="shrink-0 w-44 bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all">
+                <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-semibold capitalize mb-2 inline-block',
+                  s.careLevel === 'beginner' ? 'bg-emerald-500/20 text-emerald-300'
+                  : s.careLevel === 'intermediate' ? 'bg-blue-500/20 text-blue-300'
+                  : 'bg-amber-500/20 text-amber-300'
+                )}>{s.careLevel}</span>
+                <p className="text-sm font-semibold text-gray-100 leading-tight">{s.commonName}</p>
+                <p className="text-[10px] text-gray-500 italic mb-2 truncate">{s.scientificName}</p>
+                <div className="space-y-1 text-[10px] text-gray-400">
+                  <p>🌡️ {displayTemp(s.temperature.warmSideCelsius[0], tempUnit)}–{displayTemp((s.temperature.baskingCelsius ?? s.temperature.warmSideCelsius)[1], tempUnit)}</p>
+                  <p>💧 {s.humidity.min}–{s.humidity.max}%</p>
+                  <p>🍖 Every {s.feeding.frequencyDays}d · {s.lighting.uvbRequired ? `UVB ${s.lighting.uvbStrength ?? ''}` : 'No UVB'}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Care Tasks ── */}
       <div className="px-4 mb-6">
         {!tasks ? (
           <div className="flex items-center justify-center py-12">
@@ -260,100 +376,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Enclosure List */}
-      {dashboardWidgets.enclosureList && (enclosures?.length ?? 0) > 0 && (
-        <div className="px-4 mb-6">
-          <SectionHeader title="Enclosures" linkTo="/enclosures" linkLabel="Manage" />
-          <div className="space-y-2">
-            {enclosures!.map(enc => {
-              const occupants = enclosureAnimalsMap.get(enc.id) ?? []
-              const cleanDays = enc.lastSubstrateClean ? daysAgo(enc.lastSubstrateClean) : null
-              const cleanUrgency = cleanDays === null ? 'text-red-400' : cleanDays < 14 ? 'text-emerald-400' : cleanDays < 30 ? 'text-amber-400' : 'text-red-400'
-              const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
-              return (
-                <button key={enc.id} onClick={() => navigate(`/enclosures/${enc.id}`)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-lg shrink-0">🏠</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-100 truncate">{enc.name}</p>
-                    {occupants.length > 0 ? (
-                      <p className="text-xs text-emerald-400 truncate">{occupants.map(a => a.name).join(', ')}</p>
-                    ) : (
-                      <p className="text-xs text-gray-600">Unoccupied</p>
-                    )}
-                    <p className="text-xs text-gray-600 mt-0.5">{dims}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={cn('text-xs font-medium', cleanUrgency)}>
-                      {cleanDays === null ? 'Never cleaned' : `${cleanDays}d ago`}
-                    </p>
-                    {enc.temperatureZones[0] && (
-                      <p className="text-xs text-gray-500 mt-0.5">{displayTemp(enc.temperatureZones[0].targetMax, tempUnit)}</p>
-                    )}
-                  </div>
-                </button>
-              )
-            })}
-            <button onClick={() => navigate('/enclosures/add')}
-              className="w-full border border-dashed border-gray-700 rounded-xl p-3 text-gray-600 text-sm hover:border-emerald-500/40 hover:text-emerald-400 transition-colors flex items-center justify-center gap-2">
-              <Plus size={14} /> Add Enclosure
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Species Care Guides */}
-      {dashboardWidgets.speciesGuides && matchedSpecies.length > 0 && (
-        <div className="px-4 mb-6">
-          <SectionHeader title="Species Care Guides" linkTo="/species" linkLabel="Browse all" />
-          <div className="space-y-3">
-            {matchedSpecies.map(s => (
-              <button key={s.id} onClick={() => navigate(`/species/${s.id}`)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div>
-                    <p className="font-semibold text-gray-100">{s.commonName}</p>
-                    <p className="text-xs text-gray-500 italic">{s.scientificName}</p>
-                  </div>
-                  <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0',
-                    s.careLevel === 'beginner' ? 'bg-emerald-500/20 text-emerald-300'
-                    : s.careLevel === 'intermediate' ? 'bg-blue-500/20 text-blue-300'
-                    : 'bg-amber-500/20 text-amber-300'
-                  )}>{s.careLevel}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span>🌡️</span>
-                    <span className="text-gray-400">
-                      {displayTemp(s.temperature.warmSideCelsius[0], tempUnit)}–{displayTemp((s.temperature.baskingCelsius ?? s.temperature.warmSideCelsius)[1], tempUnit)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span>💧</span>
-                    <span className="text-gray-400">{s.humidity.min}–{s.humidity.max}%</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span>🍖</span>
-                    <span className="text-gray-400">Every {s.feeding.frequencyDays}d</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span>☀️</span>
-                    <span className="text-gray-400">
-                      {s.lighting.uvbRequired ? `UVB ${s.lighting.uvbStrength ?? 'required'}` : 'No UVB'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 col-span-2">
-                    <span>⏳</span>
-                    <span className="text-gray-400">{s.lifespanYears[0]}–{s.lifespanYears[1]} yr lifespan</span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Colony / Frozen Alerts */}
+      {/* ── Colony / Frozen Alerts ── */}
       {dashboardWidgets.colonyAlerts && lowStockItems.length > 0 && (
         <div className="px-4 mb-6">
           <SectionHeader title="Low Stock Alerts" />
@@ -365,7 +388,7 @@ export default function Dashboard() {
                   : <Bug size={16} className="text-amber-400 shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-100 truncate">{item.name}</p>
-                  <p className="text-xs text-red-400">{item.estimatedCount ?? 0} remaining (alert at {item.lowStockThreshold})</p>
+                  <p className="text-xs text-red-400">{item.estimatedCount ?? 0} left (alert at {item.lowStockThreshold})</p>
                 </div>
                 <button onClick={() => navigate('/colonies')} className="text-xs text-red-300 hover:text-red-200 shrink-0">View</button>
               </div>
@@ -374,7 +397,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent Activity */}
+      {/* ── Recent Activity ── */}
       {dashboardWidgets.recentActivity && (recentEvents?.length ?? 0) > 0 && (
         <div className="px-4 mb-6">
           <SectionHeader title="Recent Activity" />

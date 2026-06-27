@@ -47,9 +47,12 @@ export interface TemperatureZone {
   targetMax: number;
 }
 
+export type EnclosureType = 'terrarium' | 'aquarium' | 'paludarium' | 'vivarium' | 'pond' | 'other';
+
 export interface Enclosure {
   id: string;
   name: string;
+  enclosureType?: EnclosureType;
   animalId?: string;
   dimensionsLWHcm: [number, number, number];
   substrate: SubstrateLayer[];

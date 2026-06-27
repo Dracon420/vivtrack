@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Home, ArrowUpDown, Check } from 'lucide-react'
+import { Plus, Search, Home, ArrowUpDown, Check, ScanLine } from 'lucide-react'
 import { useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { cn } from '@/lib/utils'
@@ -206,6 +206,11 @@ export default function AnimalList() {
         </div>
         <div className="flex items-center gap-2">
           <SortDropdown sort={sort} setSort={setSort} />
+          <button onClick={() => navigate('/scanner')}
+            className="w-9 h-9 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-gray-200 rounded-full flex items-center justify-center transition-colors"
+            aria-label="Scan QR / NFC">
+            <ScanLine size={18} />
+          </button>
           <button onClick={() => navigate('/animals/add')}
             className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full flex items-center justify-center transition-colors">
             <Plus size={20} />
