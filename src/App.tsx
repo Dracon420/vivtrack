@@ -10,6 +10,7 @@ const AnimalList = lazy(() => import('@/pages/Animals'))
 const AnimalProfile = lazy(() => import('@/pages/Animals/AnimalProfile'))
 const AddAnimal = lazy(() => import('@/pages/Animals/AddAnimal'))
 const QuickLog = lazy(() => import('@/pages/Animals/QuickLog'))
+const EditAnimal = lazy(() => import('@/pages/Animals/EditAnimal'))
 const EnclosureList = lazy(() => import('@/pages/Enclosures'))
 const EnclosureDetail = lazy(() => import('@/pages/Enclosures/EnclosureDetail'))
 const EnclosureForm = lazy(() => import('@/pages/Enclosures/EnclosureForm'))
@@ -66,6 +67,9 @@ function AppRoutes() {
           } />
           <Route path="animals/:id/log" element={
             <Suspense fallback={<PageLoader />}><QuickLog /></Suspense>
+          } />
+          <Route path="animals/:id/edit" element={
+            <Suspense fallback={<PageLoader />}><EditAnimal /></Suspense>
           } />
           <Route path="enclosures" element={
             <Suspense fallback={<PageLoader />}><EnclosureList /></Suspense>

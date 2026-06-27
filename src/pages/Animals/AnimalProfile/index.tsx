@@ -231,7 +231,7 @@ export default function AnimalProfile() {
           <h1 className="text-xl font-bold text-gray-100 truncate">{animal.name}</h1>
           <p className="text-sm text-gray-400 truncate">{animal.species}{animal.morph ? ` — ${animal.morph}` : ''}</p>
         </div>
-        <button className="text-gray-400 hover:text-gray-200 p-1">
+        <button onClick={() => navigate(`/animals/${animal.id}/edit`)} className="text-gray-400 hover:text-gray-200 p-1">
           <Edit2 size={18} />
         </button>
       </div>
