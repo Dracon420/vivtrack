@@ -215,6 +215,8 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
   const [waterDays, setWaterDays] = useState('')
   const [animalSafe, setAnimalSafe] = useState<boolean | undefined>(undefined)
   const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => { loadPlantSpecies().then(setSpeciesList) }, [])
 
@@ -250,19 +252,27 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
   }
 
   const handleSave = async () => {
-    const speciesName = selectedSpecies ? selectedSpecies.scientificName : customSpecies
-    if (!name || !speciesName) return
-    await addPlant({
-      name, species: speciesName, variety: variety || undefined, type,
-      status: 'stable', lightNeeds: light,
-      wateringFrequencyDays: waterDays ? parseInt(waterDays) : undefined,
-      lastWatered: undefined, lastFertilized: undefined,
-      propagationsCount: 0, notes: notes || undefined,
-      thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: undefined,
-      speciesId: selectedSpecies?.id,
-      animalSafe,
-    })
-    onClose()
+    if (!name) return
+    const speciesName = selectedSpecies ? selectedSpecies.scientificName : (customSpecies || name)
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await addPlant({
+        name, species: speciesName, variety: variety || undefined, type,
+        status: 'stable', lightNeeds: light,
+        wateringFrequencyDays: waterDays ? parseInt(waterDays) : undefined,
+        lastWatered: undefined, lastFertilized: undefined,
+        propagationsCount: 0, notes: notes || undefined,
+        thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: undefined,
+        speciesId: selectedSpecies?.id,
+        animalSafe,
+      })
+      onClose()
+    } catch (err: any) {
+      const msg = err?.message || err?.details || err?.hint || JSON.stringify(err)
+      setSaveError(`Save failed: ${msg}`)
+      setSaving(false)
+    }
   }
 
   const tox = animalSafe !== undefined ? toxicityLabel({ animalSafe }) : null
@@ -337,7 +347,7 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
 
       {!selectedSpecies && (
         <input value={customSpecies} onChange={e => setCustomSpecies(e.target.value)} type="text"
-          placeholder="Botanical name (e.g. Epipremnum aureum) *" className="f-input" />
+          placeholder="Botanical name (e.g. Epipremnum aureum) — optional" className="f-input" />
       )}
 
       <input value={variety} onChange={e => setVariety(e.target.value)} type="text"
@@ -381,12 +391,13 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {saveError && <p className="text-xs text-red-400">{saveError}</p>}
       <div className="flex gap-2">
-        <button onClick={handleSave} disabled={!name || (!selectedSpecies && !customSpecies)}
+        <button onClick={handleSave} disabled={!name || saving}
           className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl disabled:opacity-40 transition-colors">
-          Save Plant
+          {saving ? 'Saving…' : 'Save Plant'}
         </button>
-        <button onClick={onClose} className="px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-xl transition-colors">
+        <button onClick={onClose} disabled={saving} className="px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-xl transition-colors disabled:opacity-40">
           Cancel
         </button>
       </div>
