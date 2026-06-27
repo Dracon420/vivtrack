@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2, Star } from 'lucide-react'
 import { useAnimal, updateAnimal } from '@/db/hooks/useAnimals'
 import { useCareEvents } from '@/db/hooks/useCareEvents'
 import { useWeightRecords } from '@/db/hooks/useWeightRecords'
@@ -215,12 +215,21 @@ function MedsTab({ animalId }: { animalId: string }) {
 }
 
 // ── Photos Tab ──────────────────────────────────────────────────────────────
+type ViewMode = { kind: 'gallery'; photo: AppPhoto } | { kind: 'thumbnail' }
+
 function PhotosTab({ animal }: { animal: Animal }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  // cropSrc: object URL (new file) or base64 (existing photo for recrop)
   const [cropSrc, setCropSrc] = useState<string | null>(null)
-  const [viewPhoto, setViewPhoto] = useState<AppPhoto | null>(null)
+  const [cropTarget, setCropTarget] = useState<'gallery' | 'thumbnail'>('gallery')
+  const [viewMode, setViewMode] = useState<ViewMode | null>(null)
   const [saving, setSaving] = useState(false)
   const photos = animal.photos ?? []
+
+  const openFilePicker = (target: 'gallery' | 'thumbnail') => {
+    setCropTarget(target)
+    fileRef.current?.click()
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -230,20 +239,32 @@ function PhotosTab({ animal }: { animal: Animal }) {
   }
 
   const handleCropConfirm = async (base64: string) => {
-    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    const isBlob = cropSrc?.startsWith('blob:')
+    if (cropSrc && isBlob) URL.revokeObjectURL(cropSrc)
     setCropSrc(null)
     setSaving(true)
-    const now = new Date().toISOString()
-    const photo: AppPhoto = { id: uuidv4(), base64, takenAt: now, createdAt: now }
-    const updated = [...photos, photo]
-    await updateAnimal(animal.id, { photos: updated })
+    if (cropTarget === 'thumbnail') {
+      await updateAnimal(animal.id, { thumbnailBase64: base64 })
+    } else {
+      const now = new Date().toISOString()
+      const photo: AppPhoto = { id: uuidv4(), base64, takenAt: now, createdAt: now }
+      await updateAnimal(animal.id, { photos: [...photos, photo] })
+    }
     setSaving(false)
   }
 
-  const handleDelete = async (photoId: string) => {
-    setViewPhoto(null)
+  const handleDeleteGallery = async (photoId: string) => {
+    setViewMode(null)
     await updateAnimal(animal.id, { photos: photos.filter(p => p.id !== photoId) })
   }
+
+  const handleDeleteThumbnail = async () => {
+    setViewMode(null)
+    await updateAnimal(animal.id, { thumbnailBase64: undefined })
+  }
+
+  const hasThumbnail = !!animal.thumbnailBase64
+  const totalCount = photos.length + (hasThumbnail ? 1 : 0)
 
   return (
     <>
@@ -251,46 +272,70 @@ function PhotosTab({ animal }: { animal: Animal }) {
         <CropModal
           src={cropSrc}
           onConfirm={handleCropConfirm}
-          onCancel={() => { URL.revokeObjectURL(cropSrc); setCropSrc(null) }}
+          onCancel={() => { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null) }}
         />
       )}
 
-      {/* Full-screen photo viewer */}
-      {viewPhoto && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => setViewPhoto(null)}>
-          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 to-transparent">
-            <button onClick={() => setViewPhoto(null)} className="text-gray-300 p-2 -ml-2">
+      {/* Full-screen viewer */}
+      {viewMode && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => setViewMode(null)}>
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 to-transparent shrink-0">
+            <button onClick={() => setViewMode(null)} className="text-gray-300 p-2 -ml-2">
               <X size={22} />
             </button>
+            {viewMode.kind === 'thumbnail' && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                <Star size={12} className="fill-amber-400" /> Profile photo
+              </span>
+            )}
             <button
-              onClick={e => { e.stopPropagation(); handleDelete(viewPhoto.id) }}
+              onClick={e => {
+                e.stopPropagation()
+                viewMode.kind === 'thumbnail'
+                  ? handleDeleteThumbnail()
+                  : handleDeleteGallery(viewMode.photo.id)
+              }}
               className="flex items-center gap-1.5 text-red-400 text-sm px-3 py-1.5 rounded-xl hover:bg-red-500/10 transition-colors"
             >
               <Trash2 size={14} /> Delete
             </button>
           </div>
-          <div className="flex-1 flex items-center justify-center p-4">
+
+          <div className="flex-1 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <img
-              src={viewPhoto.base64}
+              src={viewMode.kind === 'thumbnail' ? animal.thumbnailBase64! : viewMode.photo.base64}
               className="max-w-full max-h-full object-contain rounded-xl"
-              onClick={e => e.stopPropagation()}
             />
           </div>
-          {viewPhoto.caption && (
-            <p className="text-center text-sm text-gray-400 pb-8 px-4">{viewPhoto.caption}</p>
+
+          {/* Recrop button for profile photo */}
+          {viewMode.kind === 'thumbnail' && (
+            <div className="flex justify-center pb-8">
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  setCropTarget('thumbnail')
+                  setCropSrc(animal.thumbnailBase64!)
+                  setViewMode(null)
+                }}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+              >
+                <Camera size={16} /> Recrop profile photo
+              </button>
+            </div>
           )}
         </div>
       )}
 
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
-      {photos.length === 0 && !saving ? (
+      {totalCount === 0 && !saving ? (
         <div className="text-center py-12">
           <Camera size={36} className="text-gray-700 mx-auto mb-3" />
           <p className="text-gray-400 font-medium">No photos yet</p>
           <p className="text-gray-600 text-sm mt-1 mb-4">Add photos to document this animal's growth and appearance.</p>
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => openFilePicker('gallery')}
             className="flex items-center gap-2 mx-auto bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
           >
             <Camera size={16} /> Add First Photo
@@ -298,9 +343,9 @@ function PhotosTab({ animal }: { animal: Animal }) {
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-1.5">
-          {/* Add Photo cell */}
+          {/* Add photo cell */}
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => openFilePicker('gallery')}
             disabled={saving}
             className="aspect-square bg-gray-900 border border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center gap-1.5 hover:border-emerald-500/50 hover:bg-gray-800 transition-all active:scale-95"
           >
@@ -314,17 +359,30 @@ function PhotosTab({ animal }: { animal: Animal }) {
             )}
           </button>
 
-          {/* Photo grid */}
+          {/* Profile thumbnail — always first after the add cell */}
+          {hasThumbnail && (
+            <button
+              onClick={() => setViewMode({ kind: 'thumbnail' })}
+              className="relative aspect-square rounded-xl overflow-hidden active:scale-95 transition-transform"
+            >
+              <img src={animal.thumbnailBase64!} className="w-full h-full object-cover" />
+              <div className="absolute top-1 right-1">
+                <Star size={11} className="text-amber-400 fill-amber-400 drop-shadow" />
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-3">
+                <p className="text-[10px] text-white/80 truncate">Profile</p>
+              </div>
+            </button>
+          )}
+
+          {/* Gallery photos — newest first */}
           {[...photos].reverse().map(photo => (
             <button
               key={photo.id}
-              onClick={() => setViewPhoto(photo)}
+              onClick={() => setViewMode({ kind: 'gallery', photo })}
               className="aspect-square rounded-xl overflow-hidden active:scale-95 transition-transform"
             >
-              <img
-                src={photo.base64}
-                className="w-full h-full object-cover"
-              />
+              <img src={photo.base64} className="w-full h-full object-cover" />
             </button>
           ))}
         </div>

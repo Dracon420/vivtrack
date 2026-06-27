@@ -8,6 +8,7 @@ import { useAnimal, useCareSchedule, updateAnimal, saveCareSchedule, deleteAnima
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { loadSpecies } from '@/utils/species'
 import { cn } from '@/lib/utils'
+import CropModal from '@/components/CropModal'
 import type { SpeciesTemplate } from '@/types'
 
 const schema = z.object({
@@ -62,6 +63,7 @@ export default function EditAnimal() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [seeded, setSeeded] = useState(false)
   const [thumbnail, setThumbnail] = useState<string | null>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
 
   // Misting state (separate from react-hook-form)
   const [mistingType, setMistingType] = useState<'manual' | 'automatic'>('manual')
@@ -154,11 +156,17 @@ export default function EditAnimal() {
     }
   }, [animal, schedule, reset, seeded])
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const base64 = await compressImage(file)
+    e.target.value = ''
+    setCropSrc(URL.createObjectURL(file))
+  }
+
+  const handleCropConfirm = (base64: string) => {
     setThumbnail(base64)
+    if (cropSrc && cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
   }
 
   const buildMistingConfig = () => {
@@ -234,12 +242,31 @@ export default function EditAnimal() {
         <h1 className="text-xl font-bold text-gray-100 flex-1 truncate">Edit {animal.name}</h1>
       </div>
 
+      {cropSrc && (
+        <CropModal
+          src={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={() => { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null) }}
+        />
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} className="px-4 space-y-4">
         {/* Photo */}
         <div className="flex flex-col items-center gap-3 py-2">
           <div className="relative">
             {thumbnail ? (
-              <img src={thumbnail} className="w-24 h-24 rounded-full object-cover border-2 border-emerald-500/50" />
+              <button
+                type="button"
+                onClick={() => setCropSrc(thumbnail)}
+                className="group relative"
+                title="Tap to recrop"
+              >
+                <img src={thumbnail} className="w-24 h-24 rounded-full object-cover border-2 border-emerald-500/50" />
+                {/* Recrop hint overlay */}
+                <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
+                  <RefreshCw size={20} className="text-white" />
+                </div>
+              </button>
             ) : (
               <div className="w-24 h-24 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
                 <span className="text-3xl">🐾</span>
@@ -256,14 +283,16 @@ export default function EditAnimal() {
               <button
                 type="button"
                 onClick={() => setThumbnail(null)}
-                className="absolute -top-1 -right-1 w-6 h-6 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full flex items-center justify-center"
+                className="absolute -top-1 -left-1 w-6 h-6 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full flex items-center justify-center"
               >
                 <X size={10} />
               </button>
             )}
           </div>
           <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-          <p className="text-xs text-gray-600">Tap camera icon to add/change photo</p>
+          <p className="text-xs text-gray-600">
+            {thumbnail ? 'Tap photo to recrop · camera to replace' : 'Tap camera to add photo'}
+          </p>
         </div>
 
         {/* Species read-only */}

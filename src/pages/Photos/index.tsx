@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Camera, X, Trash2, Images } from 'lucide-react'
+import { Camera, X, Trash2, Images, Star } from 'lucide-react'
 import { useAnimals, updateAnimal } from '@/db/hooks/useAnimals'
 import { useEnclosures, updateEnclosure } from '@/db/hooks/useEnclosures'
 import { usePlants, updatePlant } from '@/db/hooks/usePlants'
@@ -16,9 +16,11 @@ interface PhotoEntry {
   subjectName: string
   subjectType: 'animal' | 'enclosure' | 'plant'
   subjectThumb?: string
+  /** True when this entry represents the entity's profile thumbnail, not a gallery photo */
+  isThumbnail?: boolean
 }
 
-// ── Add Photo Modal — pick subject, then crop ────────────────────────────────
+// ── Add Photo Modal ───────────────────────────────────────────────────────────
 function AddPhotoModal({
   animals, enclosures, plants, onClose,
 }: {
@@ -79,7 +81,8 @@ function AddPhotoModal({
 
       <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end" onClick={onClose}>
         <div
-          className="w-full bg-gray-900 border-t border-gray-800 rounded-t-2xl p-4 pb-safe space-y-4 max-h-[75vh] flex flex-col"
+          className="w-full bg-gray-900 border-t border-gray-800 rounded-t-2xl p-4 space-y-4 max-h-[75vh] flex flex-col"
+          style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
           onClick={e => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
@@ -87,7 +90,6 @@ function AddPhotoModal({
             <button onClick={onClose} className="text-gray-500 hover:text-gray-200 p-1"><X size={20} /></button>
           </div>
 
-          {/* Type tabs */}
           <div className="flex gap-2">
             {(['animal', 'enclosure', 'plant'] as const).map(t => (
               <button
@@ -103,7 +105,6 @@ function AddPhotoModal({
             ))}
           </div>
 
-          {/* Subject list */}
           <div className="overflow-y-auto flex-1 space-y-1.5">
             {items.length === 0 ? (
               <p className="text-gray-600 text-sm text-center py-4">No {tab}s added yet.</p>
@@ -130,7 +131,6 @@ function AddPhotoModal({
             ))}
           </div>
 
-          {/* Pick photo button */}
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
           <button
             onClick={() => fileRef.current?.click()}
@@ -146,7 +146,7 @@ function AddPhotoModal({
   )
 }
 
-// ── Photo Library ────────────────────────────────────────────────────────────
+// ── Photo Library ─────────────────────────────────────────────────────────────
 export default function PhotoLibrary() {
   const animals = useAnimals()
   const enclosures = useEnclosures()
@@ -155,9 +155,44 @@ export default function PhotoLibrary() {
   const [viewEntry, setViewEntry] = useState<PhotoEntry | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [cropEntry, setCropEntry] = useState<PhotoEntry | null>(null)
 
-  // Flatten all photos from all entities
-  const allPhotos: PhotoEntry[] = [
+  // ── Build thumbnail entries (profile photos already set on each entity)
+  const thumbEntries: PhotoEntry[] = [
+    ...(animals ?? [])
+      .filter(a => a.thumbnailBase64)
+      .map(a => ({
+        photo: {
+          id: `thumb_${a.id}`,
+          base64: a.thumbnailBase64!,
+          takenAt: a.createdAt,
+          createdAt: a.createdAt,
+        },
+        subjectId: a.id,
+        subjectName: a.name,
+        subjectType: 'animal' as const,
+        subjectThumb: a.thumbnailBase64,
+        isThumbnail: true,
+      })),
+    ...(plants ?? [])
+      .filter(p => p.thumbnailBase64)
+      .map(p => ({
+        photo: {
+          id: `thumb_${p.id}`,
+          base64: p.thumbnailBase64!,
+          takenAt: p.createdAt,
+          createdAt: p.createdAt,
+        },
+        subjectId: p.id,
+        subjectName: p.name,
+        subjectType: 'plant' as const,
+        subjectThumb: p.thumbnailBase64,
+        isThumbnail: true,
+      })),
+  ]
+
+  // ── Build gallery entries (photos[] on each entity)
+  const galleryEntries: PhotoEntry[] = [
     ...(animals ?? []).flatMap(a =>
       (a.photos ?? []).map(p => ({
         photo: p,
@@ -186,22 +221,47 @@ export default function PhotoLibrary() {
     ),
   ].sort((a, b) => b.photo.takenAt.localeCompare(a.photo.takenAt))
 
+  const allPhotos: PhotoEntry[] = [...thumbEntries, ...galleryEntries]
+
   const filtered = filter === 'all' ? allPhotos : allPhotos.filter(e => e.subjectType === filter)
 
   const handleDelete = async (entry: PhotoEntry) => {
     setDeleting(true)
-    if (entry.subjectType === 'animal') {
-      const a = animals?.find(x => x.id === entry.subjectId)
-      if (a) await updateAnimal(a.id, { photos: (a.photos ?? []).filter(p => p.id !== entry.photo.id) })
-    } else if (entry.subjectType === 'enclosure') {
-      const e = enclosures?.find(x => x.id === entry.subjectId)
-      if (e) await updateEnclosure(e.id, { photos: (e.photos ?? []).filter(p => p.id !== entry.photo.id) })
+    if (entry.isThumbnail) {
+      if (entry.subjectType === 'animal') {
+        const a = animals?.find(x => x.id === entry.subjectId)
+        if (a) await updateAnimal(a.id, { thumbnailBase64: undefined })
+      } else if (entry.subjectType === 'plant') {
+        const p = plants?.find(x => x.id === entry.subjectId)
+        if (p) await updatePlant(p.id, { thumbnailBase64: undefined })
+      }
     } else {
-      const pl = plants?.find(x => x.id === entry.subjectId)
-      if (pl) await updatePlant(pl.id, { photos: (pl.photos ?? []).filter(p => p.id !== entry.photo.id) })
+      if (entry.subjectType === 'animal') {
+        const a = animals?.find(x => x.id === entry.subjectId)
+        if (a) await updateAnimal(a.id, { photos: (a.photos ?? []).filter(p => p.id !== entry.photo.id) })
+      } else if (entry.subjectType === 'enclosure') {
+        const e = enclosures?.find(x => x.id === entry.subjectId)
+        if (e) await updateEnclosure(e.id, { photos: (e.photos ?? []).filter(p => p.id !== entry.photo.id) })
+      } else {
+        const pl = plants?.find(x => x.id === entry.subjectId)
+        if (pl) await updatePlant(pl.id, { photos: (pl.photos ?? []).filter(p => p.id !== entry.photo.id) })
+      }
     }
     setViewEntry(null)
     setDeleting(false)
+  }
+
+  const handleRecropConfirm = async (base64: string) => {
+    if (!cropEntry) return
+    if (cropEntry.subjectType === 'animal') {
+      const a = animals?.find(x => x.id === cropEntry.subjectId)
+      if (a) await updateAnimal(a.id, { thumbnailBase64: base64 })
+    } else if (cropEntry.subjectType === 'plant') {
+      const p = plants?.find(x => x.id === cropEntry.subjectId)
+      if (p) await updatePlant(p.id, { thumbnailBase64: base64 })
+    }
+    setCropEntry(null)
+    setViewEntry(null)
   }
 
   const FILTER_TABS: { key: SubjectType; label: string }[] = [
@@ -213,16 +273,34 @@ export default function PhotoLibrary() {
 
   return (
     <div className="min-h-full pb-24">
+      {/* Recrop modal for existing thumbnail */}
+      {cropEntry && (
+        <CropModal
+          src={cropEntry.photo.base64}
+          onConfirm={handleRecropConfirm}
+          onCancel={() => setCropEntry(null)}
+        />
+      )}
+
       {/* Full-screen photo viewer */}
-      {viewEntry && (
+      {viewEntry && !cropEntry && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => setViewEntry(null)}>
-          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black to-transparent">
+          {/* Top bar */}
+          <div
+            className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/90 to-transparent shrink-0"
+            style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+          >
             <button onClick={() => setViewEntry(null)} className="text-gray-300 p-2 -ml-2">
               <X size={22} />
             </button>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-200">{viewEntry.subjectName}</p>
-              <p className="text-xs text-gray-500 capitalize">{viewEntry.subjectType}</p>
+              <p className="text-sm font-medium text-gray-100 flex items-center gap-1.5">
+                {viewEntry.isThumbnail && <Star size={12} className="text-amber-400 fill-amber-400" />}
+                {viewEntry.subjectName}
+              </p>
+              <p className="text-xs text-gray-500 capitalize">
+                {viewEntry.isThumbnail ? 'Profile photo' : viewEntry.subjectType}
+              </p>
             </div>
             <button
               onClick={e => { e.stopPropagation(); if (!deleting) handleDelete(viewEntry) }}
@@ -232,12 +310,29 @@ export default function PhotoLibrary() {
               <Trash2 size={14} /> {deleting ? '…' : 'Delete'}
             </button>
           </div>
+
+          {/* Image */}
           <div className="flex-1 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <img
               src={viewEntry.photo.base64}
               className="max-w-full max-h-full object-contain rounded-xl"
             />
           </div>
+
+          {/* Recrop button for profile thumbnails */}
+          {viewEntry.isThumbnail && (
+            <div
+              className="flex justify-center pb-8 px-4"
+              style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom))' }}
+            >
+              <button
+                onClick={e => { e.stopPropagation(); setCropEntry(viewEntry) }}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+              >
+                <Camera size={16} /> Recrop profile photo
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -297,18 +392,22 @@ export default function PhotoLibrary() {
         <div className="px-4 grid grid-cols-3 gap-1.5">
           {filtered.map(entry => (
             <button
-              key={entry.photo.id}
+              key={`${entry.subjectId}_${entry.photo.id}`}
               onClick={() => setViewEntry(entry)}
               className="relative aspect-square rounded-xl overflow-hidden active:scale-95 transition-transform"
             >
-              <img
-                src={entry.photo.base64}
-                className="w-full h-full object-cover"
-              />
-              {/* Subject name label */}
+              <img src={entry.photo.base64} className="w-full h-full object-cover" />
+
+              {/* Subject name + profile badge */}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pb-1 pt-3">
                 <p className="text-[10px] text-white/90 truncate leading-tight">{entry.subjectName}</p>
               </div>
+
+              {entry.isThumbnail && (
+                <div className="absolute top-1 right-1">
+                  <Star size={11} className="text-amber-400 fill-amber-400 drop-shadow" />
+                </div>
+              )}
             </button>
           ))}
         </div>
