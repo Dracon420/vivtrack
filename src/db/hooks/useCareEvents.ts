@@ -68,6 +68,25 @@ export function useLastCareEvent(animalId: string | undefined, type: CareEvent['
   return data
 }
 
+export function useAllRecentCareEvents(limit = 8): CareEvent[] | undefined {
+  const { user } = useAuth()
+  const [data, setData] = useState<CareEvent[] | undefined>()
+
+  useEffect(() => {
+    if (!user) { setData([]); return }
+    let mounted = true
+    const fetch = async () => {
+      const { data: rows } = await supabase.from('care_events').select('data').eq('user_id', user.id).order('occurred_at', { ascending: false }).limit(limit)
+      if (mounted) setData((rows ?? []).map(r => r.data as CareEvent))
+    }
+    fetch()
+    const channel = supabase.channel(`all_recent_${++ch}`).on('postgres_changes' as any, { event: 'INSERT', schema: 'public', table: 'care_events' }, fetch).subscribe()
+    return () => { mounted = false; supabase.removeChannel(channel) }
+  }, [user?.id, limit])
+
+  return data
+}
+
 export async function addCareEvent(data: Omit<CareEvent, 'id' | 'createdAt'>) {
   const userId = await getUserId()
   const event: CareEvent = { ...data, id: uuidv4(), createdAt: new Date().toISOString() }

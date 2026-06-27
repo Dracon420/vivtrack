@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter } from 'lucide-react'
+import { Plus, Search, Home } from 'lucide-react'
 import { useAnimals } from '@/db/hooks/useAnimals'
+import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { timeAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { Animal } from '@/types'
+import type { Animal, Enclosure } from '@/types'
 
 const statusColors: Record<Animal['status'], string> = {
   active: 'bg-emerald-500/20 text-emerald-300',
@@ -41,11 +42,57 @@ function getAnimalEmoji(species: string): string {
 
 type FilterStatus = 'all' | Animal['status']
 
+function AnimalCard({ animal, enclosure, onClick }: { animal: Animal; enclosure?: Enclosure; onClick: () => void }) {
+  const navigate = useNavigate()
+  const emoji = getAnimalEmoji(animal.species)
+  const age = animal.dateOfBirth
+    ? Math.floor((Date.now() - new Date(animal.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+    : null
+
+  return (
+    <div
+      onClick={onClick}
+      className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-95 cursor-pointer"
+    >
+      <div className="w-full aspect-square bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 text-4xl">
+        {animal.thumbnailBase64
+          ? <img src={animal.thumbnailBase64} className="w-full h-full object-cover" />
+          : emoji}
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-start justify-between gap-1">
+          <p className="font-semibold text-gray-100 text-sm leading-tight truncate">{animal.name}</p>
+          <span className={cn('shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium', statusColors[animal.status])}>
+            {animal.status === 'active' ? '●' : animal.status[0].toUpperCase()}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 truncate">{animal.species}</p>
+        {animal.morph && <p className="text-xs text-emerald-400 truncate">{animal.morph}</p>}
+        {age !== null && <p className="text-xs text-gray-600">{age}y • {animal.sex}</p>}
+
+        {enclosure && (
+          <button
+            onClick={e => { e.stopPropagation(); navigate(`/enclosures/${enclosure.id}`) }}
+            className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors mt-0.5 max-w-full"
+          >
+            <Home size={10} className="shrink-0" />
+            <span className="truncate">{enclosure.name}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function AnimalList() {
   const navigate = useNavigate()
   const animals = useAnimals()
+  const enclosures = useEnclosures()
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
+
+  const enclosureMap = new Map(enclosures?.map(e => [e.id, e]) ?? [])
 
   const filtered = animals?.filter(a => {
     const matchSearch = !search ||
@@ -65,7 +112,6 @@ export default function AnimalList() {
 
   return (
     <div className="min-h-full pb-4">
-      {/* Header */}
       <div className="px-4 pt-6 pb-3 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Animals</h1>
@@ -79,7 +125,6 @@ export default function AnimalList() {
         </button>
       </div>
 
-      {/* Search */}
       <div className="px-4 mb-3">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -93,7 +138,6 @@ export default function AnimalList() {
         </div>
       </div>
 
-      {/* Filter chips */}
       <div className="px-4 flex gap-2 mb-4 overflow-x-auto pb-1">
         {filters.map(f => (
           <button
@@ -101,9 +145,7 @@ export default function AnimalList() {
             onClick={() => setFilterStatus(f.key)}
             className={cn(
               'shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors',
-              filterStatus === f.key
-                ? 'bg-emerald-500 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              filterStatus === f.key ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             )}
           >
             {f.label}
@@ -111,7 +153,6 @@ export default function AnimalList() {
         ))}
       </div>
 
-      {/* Animal grid */}
       {filtered.length === 0 ? (
         <div className="text-center py-16 px-4">
           {animals?.length === 0 ? (
@@ -136,12 +177,16 @@ export default function AnimalList() {
       ) : (
         <div className="px-4 grid grid-cols-2 gap-3">
           {filtered.map(animal => (
-            <AnimalCard key={animal.id} animal={animal} onClick={() => navigate(`/animals/${animal.id}`)} />
+            <AnimalCard
+              key={animal.id}
+              animal={animal}
+              enclosure={animal.enclosureId ? enclosureMap.get(animal.enclosureId) : undefined}
+              onClick={() => navigate(`/animals/${animal.id}`)}
+            />
           ))}
         </div>
       )}
 
-      {/* FAB */}
       {(animals?.length ?? 0) > 0 && (
         <button
           onClick={() => navigate('/animals/add')}
@@ -151,38 +196,5 @@ export default function AnimalList() {
         </button>
       )}
     </div>
-  )
-}
-
-function AnimalCard({ animal, onClick }: { animal: Animal; onClick: () => void }) {
-  const emoji = getAnimalEmoji(animal.species)
-  const age = animal.dateOfBirth
-    ? Math.floor((Date.now() - new Date(animal.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-    : null
-
-  return (
-    <button
-      onClick={onClick}
-      className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-95"
-    >
-      {/* Photo or emoji */}
-      <div className="w-full aspect-square bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 text-4xl">
-        {animal.thumbnailBase64
-          ? <img src={animal.thumbnailBase64} className="w-full h-full object-cover" />
-          : emoji}
-      </div>
-
-      <div className="space-y-1">
-        <div className="flex items-start justify-between gap-1">
-          <p className="font-semibold text-gray-100 text-sm leading-tight truncate">{animal.name}</p>
-          <span className={cn('shrink-0 text-xs px-1.5 py-0.5 rounded-full font-medium', statusColors[animal.status])}>
-            {animal.status === 'active' ? '●' : animal.status[0].toUpperCase()}
-          </span>
-        </div>
-        <p className="text-xs text-gray-500 truncate">{animal.species}</p>
-        {animal.morph && <p className="text-xs text-emerald-400 truncate">{animal.morph}</p>}
-        {age !== null && <p className="text-xs text-gray-600">{age}y • {animal.sex}</p>}
-      </div>
-    </button>
   )
 }

@@ -6,7 +6,7 @@ import { useUIStore } from '@/store/uiStore'
 import { displayDims, displayTemp } from '@/utils/units'
 import { daysAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { Enclosure } from '@/types'
+import type { Animal, Enclosure } from '@/types'
 
 function daysSinceLabel(dateStr?: string): { label: string; urgency: string } {
   if (!dateStr) return { label: 'Never', urgency: 'text-red-400' }
@@ -18,13 +18,16 @@ function daysSinceLabel(dateStr?: string): { label: string; urgency: string } {
 
 function bulbWarnings(enc: Enclosure): number {
   const today = new Date()
-  return enc.bulbs.filter(b => {
-    if (!b.replacementDueDate) return false
-    return new Date(b.replacementDueDate) <= today
-  }).length
+  return enc.bulbs.filter(b => b.replacementDueDate && new Date(b.replacementDueDate) <= today).length
 }
 
-function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; animalName?: string; onClick: () => void; onEdit: () => void }) {
+function EnclosureCard({ enc, animals, onClick, onEdit }: {
+  enc: Enclosure
+  animals: Animal[]
+  onClick: () => void
+  onEdit: () => void
+}) {
+  const navigate = useNavigate()
   const clean = daysSinceLabel(enc.lastSubstrateClean)
   const warnings = bulbWarnings(enc)
   const { measurementUnit, tempUnit } = useUIStore()
@@ -35,12 +38,8 @@ function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; a
       onClick={onClick}
       className="w-full text-left bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-[0.98] cursor-pointer"
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-gray-100 truncate">{enc.name}</p>
-          {animalName && <p className="text-xs text-emerald-400 mt-0.5">🐾 {animalName}</p>}
-          {!animalName && <p className="text-xs text-gray-600 mt-0.5">Unoccupied</p>}
-        </div>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <p className="font-semibold text-gray-100 truncate flex-1">{enc.name}</p>
         <div className="flex items-center gap-2 shrink-0">
           {warnings > 0 && (
             <span className="flex items-center gap-1 text-xs text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full">
@@ -55,6 +54,26 @@ function EnclosureCard({ enc, animalName, onClick, onEdit }: { enc: Enclosure; a
           </button>
         </div>
       </div>
+
+      {/* Animals */}
+      {animals.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {animals.map(a => (
+            <button
+              key={a.id}
+              onClick={e => { e.stopPropagation(); navigate(`/animals/${a.id}`) }}
+              className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-full transition-colors"
+            >
+              {a.thumbnailBase64
+                ? <img src={a.thumbnailBase64} className="w-3.5 h-3.5 rounded-full object-cover" />
+                : <span>🐾</span>}
+              {a.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-600 mb-3">Unoccupied</p>
+      )}
 
       <p className="text-xs text-gray-600 mb-3">{dims}</p>
 
@@ -86,7 +105,14 @@ export default function EnclosureList() {
   const enclosures = useEnclosures()
   const animals = useAnimals()
 
-  const animalMap = new Map(animals?.map(a => [a.enclosureId ?? '', a.name]) ?? [])
+  // Group all animals by enclosureId
+  const enclosureAnimalsMap = new Map<string, Animal[]>()
+  animals?.forEach(a => {
+    if (!a.enclosureId) return
+    const arr = enclosureAnimalsMap.get(a.enclosureId) ?? []
+    arr.push(a)
+    enclosureAnimalsMap.set(a.enclosureId, arr)
+  })
 
   return (
     <div className="min-h-full pb-4">
@@ -121,7 +147,7 @@ export default function EnclosureList() {
             <EnclosureCard
               key={enc.id}
               enc={enc}
-              animalName={animalMap.get(enc.id)}
+              animals={enclosureAnimalsMap.get(enc.id) ?? []}
               onClick={() => navigate(`/enclosures/${enc.id}`)}
               onEdit={() => navigate(`/enclosures/${enc.id}/edit`)}
             />
