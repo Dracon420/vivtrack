@@ -133,8 +133,9 @@ export default function EnclosureDetail() {
   const [addingBulb, setAddingBulb] = useState(false)
 
   const { measurementUnit, tempUnit } = useUIStore()
-  const occupant = animals?.find(a => a.enclosureId === id)
-  const qrUrl = `${window.location.origin}/scan?token=${occupant?.qrCodeToken ?? ''}`
+  const occupants = animals?.filter(a => a.enclosureId === id) ?? []
+  const primaryOccupant = occupants[0]
+  const qrUrl = `${window.location.origin}/scan?token=${primaryOccupant?.qrCodeToken ?? ''}`
 
   const handleAddBulb = async (bulb: BulbRecord) => {
     if (!enc) return
@@ -160,11 +161,26 @@ export default function EnclosureDetail() {
         </div>
       </div>
 
-      {occupant && (
-        <div className="mx-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
-          <span className="text-lg">🐾</span>
-          <p className="text-sm text-emerald-300 font-medium">{occupant.name}</p>
-          <p className="text-xs text-emerald-600 ml-auto">{occupant.species}</p>
+      {occupants.length > 0 && (
+        <div className="mx-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5">
+          <p className="text-xs text-emerald-700 font-medium uppercase tracking-wider mb-2">
+            {occupants.length === 1 ? 'Occupant' : `${occupants.length} Occupants`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {occupants.map(a => (
+              <button
+                key={a.id}
+                onClick={() => navigate(`/animals/${a.id}`)}
+                className="flex items-center gap-2 text-sm text-emerald-300 hover:text-emerald-200 transition-colors"
+              >
+                {a.thumbnailBase64
+                  ? <img src={a.thumbnailBase64} className="w-6 h-6 rounded-full object-cover border border-emerald-500/40" />
+                  : <span className="text-base">🐾</span>}
+                <span className="font-medium">{a.name}</span>
+                <span className="text-xs text-emerald-600">{a.species}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -283,16 +299,16 @@ export default function EnclosureDetail() {
 
         {tab === 'qr' && (
           <div className="space-y-4">
-            {occupant ? (
+            {primaryOccupant ? (
               <>
                 <div className="bg-white p-6 rounded-2xl flex justify-center" id="qr-print-area">
                   <div className="text-center">
                     <QRCode value={qrUrl} size={180} />
-                    <p className="text-gray-900 font-bold text-sm mt-3">{occupant.name}</p>
+                    <p className="text-gray-900 font-bold text-sm mt-3">{primaryOccupant.name}</p>
                     <p className="text-gray-500 text-xs">{enc.name}</p>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 text-center">Scan to quickly log care for {occupant.name}</p>
+                <p className="text-xs text-gray-500 text-center">Scan to quickly log care for {primaryOccupant.name}</p>
                 <button
                   onClick={() => window.print()}
                   className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"

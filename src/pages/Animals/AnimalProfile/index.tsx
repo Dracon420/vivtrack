@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Edit2, Thermometer, Droplets, Sun, Utensils, Scale } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Thermometer, Droplets, Sun, Utensils, Scale, Home } from 'lucide-react'
 import { useAnimal } from '@/db/hooks/useAnimals'
 import { useCareEvents } from '@/db/hooks/useCareEvents'
 import { useWeightRecords } from '@/db/hooks/useWeightRecords'
 import { useActiveMedications } from '@/db/hooks/useMedications'
+import { useEnclosure } from '@/db/hooks/useEnclosures'
 import { formatDate, timeAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { CareEvent, Animal } from '@/types'
@@ -51,6 +52,8 @@ function CareEventRow({ event }: { event: CareEvent }) {
 }
 
 function OverviewTab({ animal }: { animal: Animal }) {
+  const navigate = useNavigate()
+  const enclosure = useEnclosure(animal.enclosureId)
   const age = animal.dateOfBirth
     ? Math.floor((Date.now() - new Date(animal.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
     : null
@@ -71,6 +74,17 @@ function OverviewTab({ animal }: { animal: Animal }) {
             {animal.status}
           </span>
         } />
+        {animal.enclosureId && (
+          <Row label="Enclosure" value={
+            <button
+              onClick={() => navigate(`/enclosures/${animal.enclosureId}`)}
+              className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors text-right"
+            >
+              <Home size={12} />
+              {enclosure ? enclosure.name : '…'}
+            </button>
+          } />
+        )}
       </div>
 
       {/* NFC/QR token */}
