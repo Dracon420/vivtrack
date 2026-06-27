@@ -1,11 +1,13 @@
-import { Sun, Moon, Monitor, Scale, DollarSign, Info } from 'lucide-react'
+import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
 import { useTheme } from '@/hooks/useTheme'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 
 export default function Settings() {
   const { theme, setTheme } = useTheme()
   const { weightUnit, setWeightUnit, currency, setCurrency } = useUIStore()
+  const { user, signOut } = useAuth()
 
   const themes = [
     { key: 'dark' as const, label: 'Dark', icon: <Moon size={16} /> },
@@ -20,6 +22,24 @@ export default function Settings() {
       </div>
 
       <div className="px-4 space-y-4">
+        {/* Account */}
+        {user && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <User size={16} className="text-gray-500" />
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Account</p>
+            </div>
+            <p className="text-sm text-gray-300 mb-3 truncate">{user.email}</p>
+            <button
+              onClick={signOut}
+              className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 transition-colors"
+            >
+              <LogOut size={14} />
+              Sign Out
+            </button>
+          </div>
+        )}
+
         {/* Theme */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">Appearance</p>
@@ -99,11 +119,11 @@ export default function Settings() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Version</span>
-              <span className="text-gray-300">0.1.0</span>
+              <span className="text-gray-300">0.2.0</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Storage</span>
-              <span className="text-gray-300">Local (IndexedDB)</span>
+              <span className="text-gray-300">Cloud (Supabase)</span>
             </div>
           </div>
         </div>
@@ -112,7 +132,7 @@ export default function Settings() {
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
           <p className="text-sm text-blue-300 font-medium">Install VivTrack</p>
           <p className="text-xs text-blue-400/70 mt-1">
-            <strong>iPhone/iPad:</strong> Tap Share → "Add to Home Screen" in Safari for offline use and push notifications.<br />
+            <strong>iPhone/iPad:</strong> Tap Share → "Add to Home Screen" in Safari.<br />
             <strong>Android:</strong> Chrome will show an install prompt automatically.
           </p>
         </div>

@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import AppShell from '@/components/layout/AppShell'
+import Auth from '@/pages/Auth'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const AnimalList = lazy(() => import('@/pages/Animals'))
@@ -29,8 +31,19 @@ function PageLoader() {
   )
 }
 
-export default function App() {
+function AppRoutes() {
   useTheme()
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-950">
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user) return <Auth />
 
   return (
     <BrowserRouter>
@@ -91,5 +104,13 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }
