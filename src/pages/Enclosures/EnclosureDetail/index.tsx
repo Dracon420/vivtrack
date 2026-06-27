@@ -142,14 +142,22 @@ export default function EnclosureDetail() {
     await updateEnclosure(enc.id, { bulbs: [...enc.bulbs, bulb] })
   }
 
+  const aquatic = enc ? (enc.enclosureType === 'aquarium' || enc.enclosureType === 'pond') : false
+
   const handleLogClean = async () => {
     if (!enc) return
-    await updateEnclosure(enc.id, { lastSubstrateClean: new Date().toISOString() })
+    if (aquatic) {
+      await updateEnclosure(enc.id, { lastWaterChange: new Date().toISOString() })
+    } else {
+      await updateEnclosure(enc.id, { lastSubstrateClean: new Date().toISOString() })
+    }
   }
 
   if (!enc) return null
 
-  const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
+  const dims = enc.volumeGallons
+    ? `${enc.volumeGallons} gal${enc.tankShape ? ` · ${enc.tankShape}` : ''}`
+    : displayDims(enc.dimensionsLWHcm, measurementUnit)
 
   return (
     <div className="min-h-full pb-24">
@@ -201,27 +209,56 @@ export default function EnclosureDetail() {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Environment</p>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-gray-500 text-xs mb-0.5">Humidity</p>
-                  <p className="font-semibold text-gray-100">{enc.humidityMin}–{enc.humidityMax}%</p>
-                </div>
-                {enc.temperatureZones.map(z => (
-                  <div key={z.name}>
-                    <p className="text-gray-500 text-xs mb-0.5">{z.name}</p>
-                    <p className="font-semibold text-gray-100">{displayTemp(z.targetMin, tempUnit)}–{displayTemp(z.targetMax, tempUnit)}</p>
-                  </div>
-                ))}
+                {aquatic ? (
+                  <>
+                    {enc.volumeGallons && (
+                      <div>
+                        <p className="text-gray-500 text-xs mb-0.5">Volume</p>
+                        <p className="font-semibold text-gray-100">{enc.volumeGallons} gal</p>
+                      </div>
+                    )}
+                    {enc.tankShape && (
+                      <div>
+                        <p className="text-gray-500 text-xs mb-0.5">Shape</p>
+                        <p className="font-semibold text-gray-100 capitalize">{enc.tankShape}</p>
+                      </div>
+                    )}
+                    {enc.temperatureZones.map(z => (
+                      <div key={z.name}>
+                        <p className="text-gray-500 text-xs mb-0.5">Water Temp</p>
+                        <p className="font-semibold text-gray-100">{displayTemp(z.targetMin, tempUnit)}–{displayTemp(z.targetMax, tempUnit)}</p>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-gray-500 text-xs mb-0.5">Humidity</p>
+                      <p className="font-semibold text-gray-100">{enc.humidityMin}–{enc.humidityMax}%</p>
+                    </div>
+                    {enc.temperatureZones.map(z => (
+                      <div key={z.name}>
+                        <p className="text-gray-500 text-xs mb-0.5">{z.name}</p>
+                        <p className="font-semibold text-gray-100">{displayTemp(z.targetMin, tempUnit)}–{displayTemp(z.targetMax, tempUnit)}</p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Substrate */}
+            {/* Substrate / Media */}
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Layers size={16} className="text-gray-500" />
-                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Substrate</p>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    {aquatic ? 'Substrate / Media' : 'Substrate'}
+                  </p>
                 </div>
-                <button onClick={handleLogClean} className="text-xs text-emerald-400 hover:text-emerald-300">Log clean</button>
+                <button onClick={handleLogClean} className="text-xs text-emerald-400 hover:text-emerald-300">
+                  {aquatic ? 'Log water change' : 'Log clean'}
+                </button>
               </div>
               {enc.substrate.length === 0 ? (
                 <p className="text-sm text-gray-600">No substrate layers added yet.</p>
@@ -235,9 +272,10 @@ export default function EnclosureDetail() {
                   ))}
                 </div>
               )}
-              {enc.lastSubstrateClean && (
-                <p className="text-xs text-gray-600 mt-3">Last cleaned: {formatDate(enc.lastSubstrateClean)}</p>
-              )}
+              {aquatic
+                ? enc.lastWaterChange && <p className="text-xs text-gray-600 mt-3">Last water change: {formatDate(enc.lastWaterChange)}</p>
+                : enc.lastSubstrateClean && <p className="text-xs text-gray-600 mt-3">Last cleaned: {formatDate(enc.lastSubstrateClean)}</p>
+              }
             </div>
 
             {/* Bulbs */}

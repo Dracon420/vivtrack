@@ -53,7 +53,13 @@ function bulbWarnings(enc: Enclosure): number {
   return enc.bulbs.filter(b => b.replacementDueDate && new Date(b.replacementDueDate) <= today).length
 }
 
+const isAquatic = (enc: Enclosure) => enc.enclosureType === 'aquarium' || enc.enclosureType === 'pond'
+
 function needsClean(enc: Enclosure): boolean {
+  if (isAquatic(enc)) {
+    if (!enc.lastWaterChange) return true
+    return daysAgo(enc.lastWaterChange) >= 7
+  }
   if (!enc.lastSubstrateClean) return true
   return daysAgo(enc.lastSubstrateClean) >= 30
 }
@@ -111,10 +117,14 @@ function EnclosureCard({ enc, animals, onClick, onEdit }: {
   enc: Enclosure; animals: Animal[]; onClick: () => void; onEdit: () => void
 }) {
   const navigate = useNavigate()
-  const clean = daysSinceLabel(enc.lastSubstrateClean)
+  const aquatic = isAquatic(enc)
+  const cleanDate = aquatic ? enc.lastWaterChange : enc.lastSubstrateClean
+  const clean = daysSinceLabel(cleanDate)
   const warnings = bulbWarnings(enc)
   const { measurementUnit, tempUnit } = useUIStore()
-  const dims = displayDims(enc.dimensionsLWHcm, measurementUnit)
+  const dims = enc.volumeGallons
+    ? `${enc.volumeGallons} gal${enc.tankShape ? ` · ${enc.tankShape}` : ''}`
+    : displayDims(enc.dimensionsLWHcm, measurementUnit)
 
   return (
     <div onClick={onClick}
@@ -157,22 +167,31 @@ function EnclosureCard({ enc, animals, onClick, onEdit }: {
 
       <div className="flex gap-4 text-xs">
         <div>
-          <p className="text-gray-600 mb-0.5">Last clean</p>
+          <p className="text-gray-600 mb-0.5">{aquatic ? 'Water change' : 'Last clean'}</p>
           <p className={cn('font-medium', clean.urgency)}>{clean.label}</p>
         </div>
         {enc.temperatureZones[0] && (
           <div className="flex items-start gap-1">
             <Thermometer size={12} className="text-gray-600 mt-0.5" />
             <div>
-              <p className="text-gray-600 mb-0.5">Basking</p>
+              <p className="text-gray-600 mb-0.5">{aquatic ? 'Water' : 'Basking'}</p>
               <p className="font-medium text-gray-300">{displayTemp(enc.temperatureZones[0].targetMax, tempUnit)}</p>
             </div>
           </div>
         )}
-        <div>
-          <p className="text-gray-600 mb-0.5">Humidity</p>
-          <p className="font-medium text-gray-300">{enc.humidityMin}–{enc.humidityMax}%</p>
-        </div>
+        {aquatic ? (
+          enc.volumeGallons ? (
+            <div>
+              <p className="text-gray-600 mb-0.5">Volume</p>
+              <p className="font-medium text-gray-300">{enc.volumeGallons}gal</p>
+            </div>
+          ) : null
+        ) : (
+          <div>
+            <p className="text-gray-600 mb-0.5">Humidity</p>
+            <p className="font-medium text-gray-300">{enc.humidityMin}–{enc.humidityMax}%</p>
+          </div>
+        )}
       </div>
     </div>
   )

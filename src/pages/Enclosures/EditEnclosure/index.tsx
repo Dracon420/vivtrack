@@ -7,23 +7,38 @@ import { z } from 'zod'
 import { useEnclosure, updateEnclosure, deleteEnclosure } from '@/db/hooks/useEnclosures'
 import { useUIStore } from '@/store/uiStore'
 import { cmToIn, inToCm, cToF, fToC } from '@/utils/units'
+import type { TankShape } from '@/types'
+
+const TANK_SHAPE_OPTS: { value: TankShape; label: string }[] = [
+  { value: 'rectangle', label: 'Rectangle' },
+  { value: 'bowfront', label: 'Bowfront' },
+  { value: 'cube', label: 'Cube' },
+  { value: 'corner', label: 'Corner / Pentagon' },
+  { value: 'other', label: 'Other' },
+]
 
 const schema = z.object({
   name: z.string().min(1),
-  lengthCm: z.coerce.number().min(1),
-  widthCm: z.coerce.number().min(1),
-  heightCm: z.coerce.number().min(1),
-  humidityMin: z.coerce.number().min(0).max(100),
-  humidityMax: z.coerce.number().min(0).max(100),
-  baskingMin: z.coerce.number().optional(),
-  baskingMax: z.coerce.number().optional(),
-  ambientMin: z.coerce.number().optional(),
-  ambientMax: z.coerce.number().optional(),
+  tankShape: z.string().optional(),
+  volumeGallons: z.coerce.number().positive().optional().or(z.literal('')),
+  lengthCm: z.coerce.number().optional().or(z.literal('')),
+  widthCm: z.coerce.number().optional().or(z.literal('')),
+  heightCm: z.coerce.number().optional().or(z.literal('')),
+  humidityMin: z.coerce.number().min(0).max(100).optional().or(z.literal('')),
+  humidityMax: z.coerce.number().min(0).max(100).optional().or(z.literal('')),
+  waterTempMin: z.coerce.number().optional().or(z.literal('')),
+  waterTempMax: z.coerce.number().optional().or(z.literal('')),
+  baskingMin: z.coerce.number().optional().or(z.literal('')),
+  baskingMax: z.coerce.number().optional().or(z.literal('')),
+  ambientMin: z.coerce.number().optional().or(z.literal('')),
+  ambientMax: z.coerce.number().optional().or(z.literal('')),
   notes: z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
-const S = `.input-field{display:block;width:100%;background:#111827;border:1px solid #1f2937;color:#f3f4f6;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none}.input-field:focus{border-color:rgba(16,185,129,.5)}.label{display:block;font-size:.75rem;color:#6b7280;font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.375rem}`
+const S = `.input-field{display:block;width:100%;background:#111827;border:1px solid #1f2937;color:#f3f4f6;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none}.input-field:focus{border-color:rgba(16,185,129,.5)}.label{display:block;font-size:.75rem;color:#6b7280;font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.375rem}select.input-field option{background:#111827}`
+
+const isAquatic = (t?: string) => t === 'aquarium' || t === 'pond'
 
 export default function EditEnclosure() {
   const { id } = useParams<{ id: string }>()
@@ -35,51 +50,71 @@ export default function EditEnclosure() {
   const { measurementUnit, tempUnit } = useUIStore()
   const fromCm = (v: number) => measurementUnit === 'in' ? cmToIn(v) : v
   const fromC = (v: number) => tempUnit === 'F' ? cToF(v) : v
-  const toCm = (v: number) => measurementUnit === 'in' ? inToCm(v) : v
-  const toC = (v: number) => tempUnit === 'F' ? fToC(v) : v
+  const toCm = (v: number | string | undefined) => {
+    if (!v || v === '') return 0
+    return measurementUnit === 'in' ? inToCm(Number(v)) : Number(v)
+  }
+  const toC = (v: number | string | undefined) => {
+    if (!v || v === '') return 0
+    return tempUnit === 'F' ? fToC(Number(v)) : Number(v)
+  }
+
+  const aquatic = isAquatic(enclosure?.enclosureType)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { humidityMin: 40, humidityMax: 60 },
   })
 
   useEffect(() => {
     if (!enclosure || seeded) return
     const basking = enclosure.temperatureZones.find(z => z.name === 'Basking')
     const ambient = enclosure.temperatureZones.find(z => z.name === 'Ambient')
+    const water = enclosure.temperatureZones.find(z => z.name === 'Water')
     reset({
       name: enclosure.name,
-      lengthCm: fromCm(enclosure.dimensionsLWHcm[0]),
-      widthCm: fromCm(enclosure.dimensionsLWHcm[1]),
-      heightCm: fromCm(enclosure.dimensionsLWHcm[2]),
-      humidityMin: enclosure.humidityMin,
-      humidityMax: enclosure.humidityMax,
-      baskingMin: basking ? fromC(basking.targetMin) : undefined,
-      baskingMax: basking ? fromC(basking.targetMax) : undefined,
-      ambientMin: ambient ? fromC(ambient.targetMin) : undefined,
-      ambientMax: ambient ? fromC(ambient.targetMax) : undefined,
+      tankShape: enclosure.tankShape ?? '',
+      volumeGallons: enclosure.volumeGallons ?? '',
+      lengthCm: enclosure.dimensionsLWHcm[0] ? fromCm(enclosure.dimensionsLWHcm[0]) : '',
+      widthCm: enclosure.dimensionsLWHcm[1] ? fromCm(enclosure.dimensionsLWHcm[1]) : '',
+      heightCm: enclosure.dimensionsLWHcm[2] ? fromCm(enclosure.dimensionsLWHcm[2]) : '',
+      humidityMin: enclosure.humidityMin || '',
+      humidityMax: enclosure.humidityMax || '',
+      waterTempMin: water ? fromC(water.targetMin) : '',
+      waterTempMax: water ? fromC(water.targetMax) : '',
+      baskingMin: basking ? fromC(basking.targetMin) : '',
+      baskingMax: basking ? fromC(basking.targetMax) : '',
+      ambientMin: ambient ? fromC(ambient.targetMin) : '',
+      ambientMax: ambient ? fromC(ambient.targetMax) : '',
       notes: enclosure.notes ?? '',
     })
     setSeeded(true)
-  }, [enclosure, reset, seeded])
+  }, [enclosure, reset, seeded]) // eslint-disable-line
 
   const onSubmit = async (data: FormValues) => {
     if (!id) return
     setSaving(true)
     try {
       const zones = []
-      if (data.baskingMin && data.baskingMax) {
-        zones.push({ name: 'Basking', targetMin: toC(data.baskingMin), targetMax: toC(data.baskingMax) })
-      }
-      if (data.ambientMin && data.ambientMax) {
-        zones.push({ name: 'Ambient', targetMin: toC(data.ambientMin), targetMax: toC(data.ambientMax) })
+      if (aquatic) {
+        if (data.waterTempMin && data.waterTempMax) {
+          zones.push({ name: 'Water', targetMin: toC(data.waterTempMin), targetMax: toC(data.waterTempMax) })
+        }
+      } else {
+        if (data.baskingMin && data.baskingMax) {
+          zones.push({ name: 'Basking', targetMin: toC(data.baskingMin), targetMax: toC(data.baskingMax) })
+        }
+        if (data.ambientMin && data.ambientMax) {
+          zones.push({ name: 'Ambient', targetMin: toC(data.ambientMin), targetMax: toC(data.ambientMax) })
+        }
       }
       await updateEnclosure(id, {
         name: data.name,
+        tankShape: aquatic ? (data.tankShape as TankShape | undefined) : undefined,
+        volumeGallons: aquatic && data.volumeGallons ? Number(data.volumeGallons) : undefined,
         dimensionsLWHcm: [toCm(data.lengthCm), toCm(data.widthCm), toCm(data.heightCm)],
         temperatureZones: zones,
-        humidityMin: data.humidityMin,
-        humidityMax: data.humidityMax,
+        humidityMin: aquatic ? 0 : Number(data.humidityMin ?? 0),
+        humidityMax: aquatic ? 0 : Number(data.humidityMax ?? 0),
         notes: data.notes,
       })
       navigate(`/enclosures/${id}`)
@@ -116,47 +151,75 @@ export default function EditEnclosure() {
           {errors.name && <p className="text-red-400 text-xs mt-1">Name is required</p>}
         </div>
 
-        <div>
-          <label className="label">Dimensions ({measurementUnit})</label>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <input {...register('lengthCm')} type="number" placeholder="Length" className="input-field text-center" />
-              <p className="text-xs text-gray-600 text-center mt-1">L</p>
+        {aquatic ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Volume (gallons)</label>
+                <input {...register('volumeGallons')} type="number" step="0.5" placeholder="75" className="input-field" />
+              </div>
+              <div>
+                <label className="label">Tank Shape</label>
+                <select {...register('tankShape')} className="input-field">
+                  <option value="">Select…</option>
+                  {TANK_SHAPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
             </div>
+
             <div>
-              <input {...register('widthCm')} type="number" placeholder="Width" className="input-field text-center" />
-              <p className="text-xs text-gray-600 text-center mt-1">W</p>
+              <label className="label">Water Temperature (°{tempUnit})</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input {...register('waterTempMin')} type="number" placeholder="Min" className="input-field" />
+                <input {...register('waterTempMax')} type="number" placeholder="Max" className="input-field" />
+              </div>
             </div>
+          </>
+        ) : (
+          <>
             <div>
-              <input {...register('heightCm')} type="number" placeholder="Height" className="input-field text-center" />
-              <p className="text-xs text-gray-600 text-center mt-1">H</p>
+              <label className="label">Dimensions ({measurementUnit})</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <input {...register('lengthCm')} type="number" placeholder="L" className="input-field text-center" />
+                  <p className="text-xs text-gray-600 text-center mt-1">Length</p>
+                </div>
+                <div>
+                  <input {...register('widthCm')} type="number" placeholder="W" className="input-field text-center" />
+                  <p className="text-xs text-gray-600 text-center mt-1">Width</p>
+                </div>
+                <div>
+                  <input {...register('heightCm')} type="number" placeholder="H" className="input-field text-center" />
+                  <p className="text-xs text-gray-600 text-center mt-1">Height</p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div>
-          <label className="label">Humidity Range (%)</label>
-          <div className="grid grid-cols-2 gap-2">
-            <input {...register('humidityMin')} type="number" placeholder="Min" className="input-field" />
-            <input {...register('humidityMax')} type="number" placeholder="Max" className="input-field" />
-          </div>
-        </div>
+            <div>
+              <label className="label">Humidity Range (%)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input {...register('humidityMin')} type="number" placeholder="Min" className="input-field" />
+                <input {...register('humidityMax')} type="number" placeholder="Max" className="input-field" />
+              </div>
+            </div>
 
-        <div>
-          <label className="label">Basking Zone (°{tempUnit})</label>
-          <div className="grid grid-cols-2 gap-2">
-            <input {...register('baskingMin')} type="number" placeholder="Min" className="input-field" />
-            <input {...register('baskingMax')} type="number" placeholder="Max" className="input-field" />
-          </div>
-        </div>
+            <div>
+              <label className="label">Basking Zone (°{tempUnit})</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input {...register('baskingMin')} type="number" placeholder="Min" className="input-field" />
+                <input {...register('baskingMax')} type="number" placeholder="Max" className="input-field" />
+              </div>
+            </div>
 
-        <div>
-          <label className="label">Ambient Zone (°{tempUnit})</label>
-          <div className="grid grid-cols-2 gap-2">
-            <input {...register('ambientMin')} type="number" placeholder="Min" className="input-field" />
-            <input {...register('ambientMax')} type="number" placeholder="Max" className="input-field" />
-          </div>
-        </div>
+            <div>
+              <label className="label">Ambient Zone (°{tempUnit})</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input {...register('ambientMin')} type="number" placeholder="Min" className="input-field" />
+                <input {...register('ambientMax')} type="number" placeholder="Max" className="input-field" />
+              </div>
+            </div>
+          </>
+        )}
 
         <div>
           <label className="label">Notes</label>

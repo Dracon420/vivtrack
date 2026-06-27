@@ -48,6 +48,7 @@ export interface TemperatureZone {
 }
 
 export type EnclosureType = 'terrarium' | 'aquarium' | 'paludarium' | 'vivarium' | 'pond' | 'other';
+export type TankShape = 'rectangle' | 'bowfront' | 'cube' | 'corner' | 'other';
 
 export interface Enclosure {
   id: string;
@@ -55,6 +56,10 @@ export interface Enclosure {
   enclosureType?: EnclosureType;
   animalId?: string;
   dimensionsLWHcm: [number, number, number];
+  // Aquarium / pond specific
+  volumeGallons?: number;
+  tankShape?: TankShape;
+  lastWaterChange?: string;
   substrate: SubstrateLayer[];
   bulbs: BulbRecord[];
   lightingSchedule?: LightingSchedule;
