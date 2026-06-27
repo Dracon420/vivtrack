@@ -38,6 +38,21 @@ export type PlantType =
 
 export type PlantStatus = 'thriving' | 'stable' | 'struggling' | 'dormant' | 'propagating' | 'dead';
 export type LightNeeds = 'low' | 'medium' | 'bright_indirect' | 'full_sun';
+export type PlantEventType = 'watering' | 'fertilizing' | 'pruning' | 'repotting' | 'propagation' | 'health_check' | 'note';
+
+export interface PlantEvent {
+  id: string;
+  type: PlantEventType;
+  occurredAt: string;
+  createdAt: string;
+  notes?: string;
+  soilMoisture?: 'dry' | 'moist' | 'wet';
+  fertilizerType?: string;
+  newPotSizeCm?: number;
+  propagationMethod?: 'cutting' | 'division' | 'offset' | 'seed';
+  propagationCount?: number;
+  healthStatus?: PlantStatus;
+}
 
 export interface Plant {
   id: string;
@@ -55,6 +70,7 @@ export interface Plant {
   notes?: string;
   thumbnailBase64?: string;
   photos?: import('./photo').AppPhoto[];
+  events?: PlantEvent[];
   acquisitionDate?: string;
   speciesId?: string;
   animalSafe?: boolean;

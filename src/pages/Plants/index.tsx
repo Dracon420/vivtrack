@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, ArrowUpDown, Check, Droplets, Sprout, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { usePlants, addPlant, updatePlant } from '@/db/hooks/usePlants'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { loadPlantSpecies, toxicityLabel } from '@/utils/plantSpecies'
 import { timeAgo, nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
-import type { Plant, PlantType, PlantStatus, PlantSpeciesTemplate } from '@/types'
+import type { Plant, PlantType, PlantStatus, PlantSpeciesTemplate, Enclosure } from '@/types'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PLANT_TYPE_EMOJI: Record<PlantType, string> = {
@@ -116,12 +117,13 @@ function animalSafeBadge(safe: boolean | undefined): { label: string; color: 'em
 }
 
 // ── Plant Card ─────────────────────────────────────────────────────────────
-function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureName?: string; onWater: () => void }) {
+function PlantCard({ plant, enclosureName, onWater, onPress }: { plant: Plant; enclosureName?: string; onWater: () => void; onPress: () => void }) {
   const due = isWateringDue(plant)
   const tox = animalSafeBadge(plant.animalSafe)
 
   return (
-    <div className={cn('bg-gray-900 border rounded-2xl p-4', due ? 'border-blue-500/40' : 'border-gray-800')}>
+    <div className={cn('bg-gray-900 border rounded-2xl p-4 cursor-pointer active:scale-[0.99] transition-transform', due ? 'border-blue-500/40' : 'border-gray-800')}
+      onClick={onPress}>
       <div className="flex items-start gap-3 mb-3">
         <div className="w-12 h-12 rounded-xl bg-gray-800 border border-gray-700 flex items-center justify-center text-xl shrink-0 overflow-hidden">
           {plant.thumbnailBase64
@@ -190,7 +192,7 @@ function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureN
       {plant.notes && <p className="text-xs text-gray-600 mb-3 truncate">{plant.notes}</p>}
 
       {due && (
-        <button onClick={onWater}
+        <button onClick={e => { e.stopPropagation(); onWater() }}
           className="w-full flex items-center justify-center gap-1.5 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-300 text-sm font-semibold rounded-xl transition-colors">
           <Droplets size={14} /> Mark Watered
         </button>
@@ -200,7 +202,7 @@ function PlantCard({ plant, enclosureName, onWater }: { plant: Plant; enclosureN
 }
 
 // ── Add Plant Form ─────────────────────────────────────────────────────────
-function AddPlantForm({ onClose }: { onClose: () => void }) {
+function AddPlantForm({ onClose, enclosures }: { onClose: () => void; enclosures: Enclosure[] }) {
   const [speciesList, setSpeciesList] = useState<PlantSpeciesTemplate[]>([])
   const [speciesSearch, setSpeciesSearch] = useState('')
   const [selectedSpecies, setSelectedSpecies] = useState<PlantSpeciesTemplate | null>(null)
@@ -215,6 +217,7 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
   const [waterDays, setWaterDays] = useState('')
   const [animalSafe, setAnimalSafe] = useState<boolean | undefined>(undefined)
   const [notes, setNotes] = useState('')
+  const [enclosureId, setEnclosureId] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -263,7 +266,7 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
         wateringFrequencyDays: waterDays ? parseInt(waterDays) : undefined,
         lastWatered: undefined, lastFertilized: undefined,
         propagationsCount: 0, notes: notes || undefined,
-        thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: undefined,
+        thumbnailBase64: undefined, acquisitionDate: undefined, enclosureId: enclosureId || undefined,
         speciesId: selectedSpecies?.id,
         animalSafe,
       })
@@ -379,6 +382,13 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
       <input value={notes} onChange={e => setNotes(e.target.value)} type="text"
         placeholder="Notes (optional)" className="f-input" />
 
+      {enclosures.length > 0 && (
+        <select value={enclosureId} onChange={e => setEnclosureId(e.target.value)} className="f-input">
+          <option value="">No enclosure (optional)</option>
+          {enclosures.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+      )}
+
       {/* Care tip from selected species */}
       {selectedSpecies?.specialNotes && selectedSpecies.specialNotes.length > 0 && (
         <div className="bg-gray-700/50 rounded-xl p-3">
@@ -408,6 +418,7 @@ function AddPlantForm({ onClose }: { onClose: () => void }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function PlantsPage() {
+  const navigate = useNavigate()
   const plants = usePlants()
   const enclosures = useEnclosures()
   const [search, setSearch] = useState('')
@@ -478,7 +489,7 @@ export default function PlantsPage() {
 
       {/* Content */}
       <div className="px-4 space-y-3">
-        {showAdd && <AddPlantForm onClose={() => setShowAdd(false)} />}
+        {showAdd && <AddPlantForm onClose={() => setShowAdd(false)} enclosures={enclosures ?? []} />}
 
         {filtered.length === 0 && !showAdd ? (
           <div className="text-center py-16">
@@ -504,7 +515,8 @@ export default function PlantsPage() {
           filtered.map(p => (
             <PlantCard key={p.id} plant={p}
               enclosureName={p.enclosureId ? enclosureMap.get(p.enclosureId)?.name : undefined}
-              onWater={() => handleWater(p.id)} />
+              onWater={() => handleWater(p.id)}
+              onPress={() => navigate(`/plants/${p.id}`)} />
           ))
         )}
       </div>

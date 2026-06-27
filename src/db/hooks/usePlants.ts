@@ -27,6 +27,25 @@ export function usePlants(): Plant[] | undefined {
   return data
 }
 
+export function usePlant(id: string | undefined): Plant | undefined {
+  const { user } = useAuth()
+  const [data, setData] = useState<Plant | undefined>()
+  useEffect(() => {
+    if (!user || !id) { setData(undefined); return }
+    let mounted = true
+    const fetch = async () => {
+      const { data: row } = await supabase.from('plants').select('data').eq('id', id).eq('user_id', user.id).single()
+      if (mounted) setData(row?.data as Plant | undefined)
+    }
+    fetch()
+    const channel = supabase.channel(`plant_${id}_${++ch}`)
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'plants', filter: `id=eq.${id}` }, fetch)
+      .subscribe()
+    return () => { mounted = false; supabase.removeChannel(channel) }
+  }, [user?.id, id])
+  return data
+}
+
 export async function addPlant(data: Omit<Plant, 'id' | 'createdAt' | 'updatedAt'>) {
   const userId = await getUserId()
   const now = new Date().toISOString()
