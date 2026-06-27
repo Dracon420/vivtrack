@@ -78,6 +78,14 @@ export async function updateFeederColony(id: string, changes: Partial<FeederColo
   await supabase.from('feeder_colonies').update({ data: updated }).eq('id', id)
 }
 
+export async function deleteFeederColony(id: string) {
+  await supabase.from('feeder_colonies').delete().eq('id', id)
+}
+
+export async function deleteCUCCulture(id: string) {
+  await supabase.from('cuc_cultures').delete().eq('id', id)
+}
+
 export async function addCUCCulture(data: Omit<CUCCulture, 'id' | 'createdAt' | 'updatedAt'>) {
   const userId = await getUserId()
   const now = new Date().toISOString()

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, AlertTriangle, Bug, Leaf, Snowflake, Search, ArrowUpDown, Check } from 'lucide-react'
-import { useFeederColonies, useCUCCultures, addFeederColony, updateFeederColony, addColonyLogEvent, addCUCCulture, updateCUCCulture } from '@/db/hooks/useColonies'
+import { Plus, AlertTriangle, Bug, Leaf, Snowflake, Search, ArrowUpDown, Check, Trash2 } from 'lucide-react'
+import { useFeederColonies, useCUCCultures, addFeederColony, updateFeederColony, addColonyLogEvent, addCUCCulture, updateCUCCulture, deleteFeederColony, deleteCUCCulture } from '@/db/hooks/useColonies'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { timeAgo, nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
@@ -75,9 +75,10 @@ function sortFeeders(list: FeederColony[], sort: string): FeederColony[] {
   })
 }
 
-function FeederCard({ colony, onHarvest }: { colony: FeederColony; onHarvest: (id: string, qty: number) => void }) {
+function FeederCard({ colony, onHarvest, onDelete }: { colony: FeederColony; onHarvest: (id: string, qty: number) => void; onDelete: (id: string) => void }) {
   const isLow = colony.lowStockThreshold !== undefined && colony.estimatedCount !== undefined && colony.estimatedCount < colony.lowStockThreshold
   const [harvestQty, setHarvestQty] = useState('')
+  const [confirming, setConfirming] = useState(false)
   return (
     <div className={cn('bg-gray-900 border rounded-xl p-4', isLow ? 'border-red-500/40' : 'border-gray-800')}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -85,7 +86,17 @@ function FeederCard({ colony, onHarvest }: { colony: FeederColony; onHarvest: (i
           <p className="font-semibold text-gray-100">{colony.name}</p>
           <p className="text-xs text-gray-500 italic">{colony.species}</p>
         </div>
-        {isLow && <span className="flex items-center gap-1 text-xs text-red-300 bg-red-500/20 px-2 py-0.5 rounded-full shrink-0"><AlertTriangle size={10} /> Low</span>}
+        <div className="flex items-center gap-2 shrink-0">
+          {isLow && <span className="flex items-center gap-1 text-xs text-red-300 bg-red-500/20 px-2 py-0.5 rounded-full"><AlertTriangle size={10} /> Low</span>}
+          {confirming ? (
+            <>
+              <button onClick={() => onDelete(colony.id)} className="text-xs text-red-400 font-semibold px-2 py-1 bg-red-500/20 rounded-lg">Delete</button>
+              <button onClick={() => setConfirming(false)} className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded-lg">Cancel</button>
+            </>
+          ) : (
+            <button onClick={() => setConfirming(true)} className="text-gray-600 hover:text-red-400 p-1 transition-colors"><Trash2 size={15} /></button>
+          )}
+        </div>
       </div>
       <div className="flex gap-4 text-sm mb-3">
         <div>
@@ -119,9 +130,10 @@ function FeederCard({ colony, onHarvest }: { colony: FeederColony; onHarvest: (i
   )
 }
 
-function FrozenCard({ colony, onAdjust }: { colony: FeederColony; onAdjust: (id: string, delta: number) => void }) {
+function FrozenCard({ colony, onAdjust, onDelete }: { colony: FeederColony; onAdjust: (id: string, delta: number) => void; onDelete: (id: string) => void }) {
   const isLow = colony.lowStockThreshold !== undefined && (colony.estimatedCount ?? 0) < (colony.lowStockThreshold ?? 0)
   const qty = colony.estimatedCount ?? 0
+  const [confirming, setConfirming] = useState(false)
   return (
     <div className={cn('bg-gray-900 border rounded-xl p-4', isLow ? 'border-red-500/40' : 'border-gray-800')}>
       <div className="flex items-center justify-between gap-2">
@@ -134,14 +146,24 @@ function FrozenCard({ colony, onAdjust }: { colony: FeederColony; onAdjust: (id:
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => onAdjust(colony.id, -1)} disabled={qty <= 0}
-            className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-200 font-bold flex items-center justify-center text-lg">−</button>
-          <span className="w-10 text-center font-bold text-gray-100 text-lg">{qty}</span>
-          <button onClick={() => onAdjust(colony.id, 1)}
-            className="w-8 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-bold flex items-center justify-center text-lg">+</button>
+          {confirming ? (
+            <>
+              <button onClick={() => onDelete(colony.id)} className="text-xs text-red-400 font-semibold px-2 py-1 bg-red-500/20 rounded-lg">Delete</button>
+              <button onClick={() => setConfirming(false)} className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded-lg">Cancel</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => onAdjust(colony.id, -1)} disabled={qty <= 0}
+                className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-gray-200 font-bold flex items-center justify-center text-lg">−</button>
+              <span className="w-10 text-center font-bold text-gray-100 text-lg">{qty}</span>
+              <button onClick={() => onAdjust(colony.id, 1)}
+                className="w-8 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-bold flex items-center justify-center text-lg">+</button>
+              <button onClick={() => setConfirming(true)} className="text-gray-600 hover:text-red-400 p-1 transition-colors ml-1"><Trash2 size={15} /></button>
+            </>
+          )}
         </div>
       </div>
-      {colony.lowStockThreshold !== undefined && (
+      {colony.lowStockThreshold !== undefined && !confirming && (
         <p className="text-xs text-gray-600 mt-2">Alert below {colony.lowStockThreshold}</p>
       )}
     </div>
@@ -149,14 +171,16 @@ function FrozenCard({ colony, onAdjust }: { colony: FeederColony; onAdjust: (id:
 }
 
 // ── CUC Card ───────────────────────────────────────────────────────────────
-function CUCCard({ culture, enclosureName, onMarkFed, onUpdateCount, onCycleHealth }: {
+function CUCCard({ culture, enclosureName, onMarkFed, onUpdateCount, onCycleHealth, onDelete }: {
   culture: CUCCulture
   enclosureName?: string
   onMarkFed: (id: string) => void
   onUpdateCount: (id: string, delta: number) => void
   onCycleHealth: (id: string, current: CUCHealth) => void
+  onDelete: (id: string) => void
 }) {
   const qty = culture.estimatedCount ?? 0
+  const [confirming, setConfirming] = useState(false)
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
       {/* Header */}
@@ -165,11 +189,23 @@ function CUCCard({ culture, enclosureName, onMarkFed, onUpdateCount, onCycleHeal
           <p className="font-semibold text-gray-100 truncate">{culture.name}</p>
           <p className="text-xs text-gray-500 italic truncate">{culture.species}</p>
         </div>
-        <button
-          onClick={() => onCycleHealth(culture.id, culture.reproductionHealth)}
-          className={cn('shrink-0 text-xs font-semibold capitalize px-2 py-0.5 rounded-full border transition-colors', HEALTH_COLORS[culture.reproductionHealth])}>
-          {culture.reproductionHealth}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {confirming ? (
+            <>
+              <button onClick={() => onDelete(culture.id)} className="text-xs text-red-400 font-semibold px-2 py-1 bg-red-500/20 rounded-lg">Delete</button>
+              <button onClick={() => setConfirming(false)} className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded-lg">Cancel</button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onCycleHealth(culture.id, culture.reproductionHealth)}
+                className={cn('text-xs font-semibold capitalize px-2 py-0.5 rounded-full border transition-colors', HEALTH_COLORS[culture.reproductionHealth])}>
+                {culture.reproductionHealth}
+              </button>
+              <button onClick={() => setConfirming(true)} className="text-gray-600 hover:text-red-400 p-1 transition-colors"><Trash2 size={15} /></button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Info row */}
@@ -455,6 +491,9 @@ export default function Colonies() {
     await updateCUCCulture(id, { reproductionHealth: next })
   }
 
+  const handleDeleteFeeder = async (id: string) => { await deleteFeederColony(id) }
+  const handleDeleteCUC = async (id: string) => { await deleteCUCCulture(id) }
+
   const filteredFeeders = sortFeeders(
     liveColonies.filter(c => {
       if (feederSearch && !c.name.toLowerCase().includes(feederSearch.toLowerCase())) return false
@@ -539,7 +578,7 @@ export default function Colonies() {
                 <p className="text-gray-400 font-medium">{liveColonies.length === 0 ? 'No feeder colonies yet' : 'No colonies match'}</p>
                 {liveColonies.length === 0 && <p className="text-gray-600 text-sm mt-1">Track roach colonies, crickets, and more.</p>}
               </div>
-            ) : filteredFeeders.map(c => <FeederCard key={c.id} colony={c} onHarvest={handleHarvest} />)}
+            ) : filteredFeeders.map(c => <FeederCard key={c.id} colony={c} onHarvest={handleHarvest} onDelete={handleDeleteFeeder} />)}
           </>
         )}
 
@@ -563,7 +602,7 @@ export default function Colonies() {
                   <button onClick={() => setShowAddFrozen(true)} className="mt-4 px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-white text-sm font-semibold rounded-xl">Add Frozen Item</button>
                 )}
               </div>
-            ) : filteredFrozen.map(c => <FrozenCard key={c.id} colony={c} onAdjust={handleFrozenAdjust} />)}
+            ) : filteredFrozen.map(c => <FrozenCard key={c.id} colony={c} onAdjust={handleFrozenAdjust} onDelete={handleDeleteFeeder} />)}
           </>
         )}
 
@@ -608,6 +647,7 @@ export default function Colonies() {
                 onMarkFed={handleCUCMarkFed}
                 onUpdateCount={handleCUCUpdateCount}
                 onCycleHealth={handleCUCCycleHealth}
+                onDelete={handleDeleteCUC}
               />
             ))}
           </>
