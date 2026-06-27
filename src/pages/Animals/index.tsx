@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Home, ArrowUpDown, Check, ScanLine, Zap } from 'lucide-react'
+import { Plus, Search, Home, ArrowUpDown, Check, ScanLine } from 'lucide-react'
 import { useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
-import { useSubscription, FREE_ANIMAL_LIMIT } from '@/hooks/useSubscription'
 import { cn } from '@/lib/utils'
 import type { Animal, Enclosure } from '@/types'
 
@@ -175,7 +174,6 @@ export default function AnimalList() {
   const navigate = useNavigate()
   const animals = useAnimals()
   const enclosures = useEnclosures()
-  const { isPro, animalLimit } = useSubscription()
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [filterClass, setFilterClass] = useState<FilterClass>('all')
@@ -199,7 +197,6 @@ export default function AnimalList() {
   const hasAnimals = (animals?.length ?? 0) > 0
   const resultCount = filtered.length
   const animalCount = animals?.length ?? 0
-  const atLimit = !isPro && animalCount >= FREE_ANIMAL_LIMIT
 
   return (
     <div className="min-h-full pb-24">
@@ -207,9 +204,7 @@ export default function AnimalList() {
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Animals</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {animalCount} total
-            {!isPro && <span className="text-gray-600"> · {animalCount}/{FREE_ANIMAL_LIMIT} free tier</span>}
-            {resultCount !== animalCount ? ` · ${resultCount} shown` : ''}
+            {animalCount} total{resultCount !== animalCount ? ` · ${resultCount} shown` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -225,24 +220,6 @@ export default function AnimalList() {
           </button>
         </div>
       </div>
-
-      {/* Limit warning banner (free tier only, near or at limit) */}
-      {!isPro && animalCount >= FREE_ANIMAL_LIMIT - 1 && (
-        <div className={cn(
-          'mx-4 mb-3 rounded-xl px-4 py-3 flex items-center justify-between gap-3',
-          atLimit ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-gray-800 border border-gray-700'
-        )}>
-          <p className="text-xs text-amber-300 leading-snug">
-            {atLimit
-              ? `You've reached the ${FREE_ANIMAL_LIMIT}-animal free limit.`
-              : `${FREE_ANIMAL_LIMIT - animalCount} slot${FREE_ANIMAL_LIMIT - animalCount === 1 ? '' : 's'} left on free tier.`}
-          </p>
-          <button onClick={() => navigate('/settings')}
-            className="shrink-0 flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold rounded-lg transition-colors">
-            <Zap size={11} /> Upgrade
-          </button>
-        </div>
-      )}
 
       {/* Search */}
       <div className="px-4 mb-2">

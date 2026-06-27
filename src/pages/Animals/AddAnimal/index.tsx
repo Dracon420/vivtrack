@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Plus, X, Zap, Gift } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Plus, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { addAnimal, saveCareSchedule, useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
-import { useSubscription, FREE_ANIMAL_LIMIT } from '@/hooks/useSubscription'
 import { loadSpecies } from '@/utils/species'
 import { todayISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
@@ -47,125 +46,10 @@ const scheduleSchema = z.object({
 type InfoValues = z.infer<typeof infoSchema>
 type ScheduleValues = z.infer<typeof scheduleSchema>
 
-import type { PlanType } from '@/hooks/useSubscription'
-
-const GATE_PLANS: { key: PlanType; label: string; price: string; detail: string }[] = [
-  { key: 'monthly',  label: 'Monthly',  price: '$4.99/mo', detail: '30-day free trial' },
-  { key: 'annual',   label: 'Annual',   price: '$20/yr',   detail: '30-day free trial · Save 67%' },
-  { key: 'lifetime', label: 'Lifetime', price: '$50',      detail: 'Pay once · Yours forever' },
-]
-
-function UpgradeGate({ onBack }: { onBack: () => void }) {
-  const navigate = useNavigate()
-  const { openCheckout, redeemCode } = useSubscription()
-  const [selectedPlan, setSelectedPlan] = useState<PlanType>('monthly')
-  const [checkingOut, setCheckingOut] = useState(false)
-  const [promoInput, setPromoInput] = useState('')
-  const [promoError, setPromoError] = useState('')
-  const [promoSuccess, setPromoSuccess] = useState('')
-  const [redeeming, setRedeeming] = useState(false)
-
-  const handleCheckout = async () => {
-    setCheckingOut(true)
-    await openCheckout(selectedPlan)
-    setCheckingOut(false)
-  }
-
-  const handleRedeem = async () => {
-    if (!promoInput.trim()) return
-    setRedeeming(true)
-    setPromoError('')
-    setPromoSuccess('')
-    const result = await redeemCode(promoInput)
-    setRedeeming(false)
-    if (result.success) {
-      setPromoSuccess('Code accepted! Pro unlocked — you can now add animals.')
-    } else {
-      setPromoError(result.error ?? 'Invalid code')
-    }
-  }
-
-  return (
-    <div className="min-h-full flex flex-col">
-      <div className="px-4 pt-6 pb-4 flex items-center gap-3">
-        <button onClick={onBack} className="p-2 rounded-xl bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors">
-          <ArrowLeft size={18} />
-        </button>
-        <h1 className="text-xl font-bold text-gray-100">Add Animal</h1>
-      </div>
-      <div className="flex-1 px-4 flex flex-col items-center justify-center gap-5 pb-24">
-        <div className="text-center">
-          <p className="text-5xl mb-4">🔒</p>
-          <p className="text-lg font-bold text-gray-100">Free limit reached</p>
-          <p className="text-sm text-gray-400 mt-2 max-w-xs">
-            You've added {FREE_ANIMAL_LIMIT} animals on the free tier. Upgrade for unlimited.
-          </p>
-        </div>
-
-        {/* Plan picker */}
-        <div className="w-full max-w-xs grid grid-cols-3 gap-2">
-          {GATE_PLANS.map(p => (
-            <button key={p.key} onClick={() => setSelectedPlan(p.key)}
-              className={cn('flex flex-col items-center py-3 px-1 rounded-xl border text-center transition-all',
-                selectedPlan === p.key
-                  ? 'border-amber-500 bg-amber-500/10'
-                  : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-              )}>
-              <p className={cn('text-[11px] font-semibold', selectedPlan === p.key ? 'text-amber-300' : 'text-gray-400')}>{p.label}</p>
-              <p className={cn('text-sm font-bold mt-0.5', selectedPlan === p.key ? 'text-amber-200' : 'text-gray-200')}>{p.price}</p>
-              <p className="text-[10px] text-gray-600 mt-1 leading-tight">{p.detail}</p>
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={handleCheckout}
-          disabled={checkingOut}
-          className="w-full max-w-xs flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-black font-bold rounded-2xl transition-colors"
-        >
-          <Zap size={16} />
-          {checkingOut ? 'Loading…' : selectedPlan === 'lifetime' ? 'Buy Lifetime — $50' : 'Start 30-Day Free Trial'}
-        </button>
-
-        <div className="w-full max-w-xs">
-          <div className="flex items-center gap-2 mb-2">
-            <Gift size={13} className="text-gray-500" />
-            <p className="text-xs text-gray-500">Have a promo code?</p>
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={promoInput}
-              onChange={e => setPromoInput(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === 'Enter' && handleRedeem()}
-              placeholder="ENTER CODE"
-              className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-600 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-emerald-500/50"
-            />
-            <button
-              onClick={handleRedeem}
-              disabled={redeeming || !promoInput.trim()}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              {redeeming ? '…' : 'Redeem'}
-            </button>
-          </div>
-          {promoError && <p className="text-xs text-red-400 mt-1.5">{promoError}</p>}
-          {promoSuccess && <p className="text-xs text-emerald-400 mt-1.5">{promoSuccess}</p>}
-        </div>
-
-        <button onClick={() => navigate('/settings')} className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
-          Manage plan in Settings
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function AddAnimal() {
   const navigate = useNavigate()
   const animals = useAnimals()
   const enclosures = useEnclosures()
-  const { isPro, animalLimit } = useSubscription()
 
   const [step, setStep] = useState(1)
   const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
@@ -317,9 +201,6 @@ export default function AddAnimal() {
     </div>
   ) : null
 
-  if (!isPro && (animals?.length ?? 0) >= animalLimit) {
-    return <UpgradeGate onBack={() => navigate('/animals')} />
-  }
 
   return (
     <div className="min-h-full pb-24">

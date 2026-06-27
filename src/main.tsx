@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// When a new deployment changes chunk hashes, the old SW can't fetch them — reload to get fresh.
+window.addEventListener('vite:preloadError', () => { window.location.reload() })
+
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
