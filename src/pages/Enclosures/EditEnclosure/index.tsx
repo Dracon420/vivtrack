@@ -61,9 +61,28 @@ export default function EditEnclosure() {
 
   const aquatic = isAquatic(enclosure?.enclosureType)
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
   })
+
+  // True when an aquatic enclosure still carries old terrarium-style data
+  const needsMigration = seeded && aquatic && (
+    (enclosure?.humidityMin ?? 0) > 0 ||
+    (enclosure?.humidityMax ?? 0) > 0 ||
+    (enclosure?.temperatureZones ?? []).some(z => z.name !== 'Water')
+  )
+
+  const handleMigrate = () => {
+    if (!enclosure) return
+    // Pull the first existing zone (Basking or Ambient) as a reasonable water temp
+    const oldZone = enclosure.temperatureZones[0]
+    setValue('humidityMin', '')
+    setValue('humidityMax', '')
+    if (oldZone) {
+      setValue('waterTempMin', fromC(oldZone.targetMin))
+      setValue('waterTempMax', fromC(oldZone.targetMax))
+    }
+  }
 
   useEffect(() => {
     if (!enclosure || seeded) return
@@ -225,6 +244,20 @@ export default function EditEnclosure() {
           <label className="label">Notes</label>
           <textarea {...register('notes')} rows={3} placeholder="Any notes..." className="input-field resize-none" />
         </div>
+
+        {needsMigration && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2.5">
+            <p className="text-sm font-semibold text-amber-300">Old format detected</p>
+            <p className="text-xs text-amber-400/70 leading-snug">
+              This aquarium was created before aquatic fields existed. Click below to convert
+              existing temperature data to Water Temp and clear the humidity values, then save.
+            </p>
+            <button type="button" onClick={handleMigrate}
+              className="text-xs font-semibold px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg transition-colors">
+              Convert to aquarium format
+            </button>
+          </div>
+        )}
 
         <button type="submit" disabled={saving}
           className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2">
