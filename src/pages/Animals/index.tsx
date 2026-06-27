@@ -165,9 +165,11 @@ function AnimalCard({ animal, onClick }: { animal: Animal; onClick: () => void }
       onClick={onClick}
       className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-left hover:border-emerald-500/40 hover:bg-gray-800 transition-all active:scale-95"
     >
-      {/* Emoji/photo placeholder */}
-      <div className="w-full aspect-square bg-gray-800 rounded-xl flex items-center justify-center mb-3 text-4xl">
-        {emoji}
+      {/* Photo or emoji */}
+      <div className="w-full aspect-square bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 text-4xl">
+        {animal.thumbnailBase64
+          ? <img src={animal.thumbnailBase64} className="w-full h-full object-cover" />
+          : emoji}
       </div>
 
       <div className="space-y-1">
