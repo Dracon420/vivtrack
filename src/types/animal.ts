@@ -5,6 +5,7 @@ export interface Animal {
   id: string;
   name: string;
   species: string;
+  speciesId?: string;
   morph?: string;
   sex: Sex;
   dateOfBirth?: string;

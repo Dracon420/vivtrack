@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Camera, Check, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Camera, Check, Plus, Trash2, X, BookOpen, Link2, Unlink, RefreshCw } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAnimal, useCareSchedule, updateAnimal, saveCareSchedule, deleteAnimal } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
+import { loadSpecies } from '@/utils/species'
 import { cn } from '@/lib/utils'
+import type { SpeciesTemplate } from '@/types'
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -69,7 +71,53 @@ export default function EditAnimal() {
   const [mistingTimes, setMistingTimes] = useState<string[]>([])
   const [newTime, setNewTime] = useState('08:00')
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  // Care guide link state
+  const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
+  const [linkedSpecies, setLinkedSpecies] = useState<SpeciesTemplate | null>(null)
+  const [selectedGuideId, setSelectedGuideId] = useState<string | undefined>(undefined)
+  const [speciesSearch, setSpeciesSearch] = useState('')
+  const [showSpeciesPicker, setShowSpeciesPicker] = useState(false)
+
+  useEffect(() => { loadSpecies().then(setAllSpecies) }, [])
+
+  // Auto-link when animal + species list both load
+  useEffect(() => {
+    if (!animal || !allSpecies.length) return
+    const guideId = animal.speciesId ?? animal.species
+    const sp = allSpecies.find(s => s.id === guideId)
+    if (sp) { setSelectedGuideId(sp.id); setLinkedSpecies(sp) }
+    else { setSelectedGuideId(undefined); setLinkedSpecies(null) }
+  }, [animal?.id, allSpecies]) // eslint-disable-line
+
+  const applyScheduleFromGuide = (sp: SpeciesTemplate) => {
+    setValue('feedingIntervalDays', sp.feeding.frequencyDays)
+    if (sp.animalClass === 'fish') {
+      setValue('waterChangeIntervalDays', 7 as any)
+      setValue('soilRehydrationIntervalDays', '' as any)
+      setMistingSchedule('none')
+    } else {
+      if (sp.humidity.mistingFrequency) {
+        setMistingType('manual'); setMistingSchedule('interval')
+        setMistingInterval('12'); setMistingUnit('hours')
+      } else {
+        setMistingSchedule('none')
+      }
+      setValue('waterChangeIntervalDays',
+        (sp.wateringNeeds === 'bowl_always' || sp.wateringNeeds === 'bowl_optional') ? 7 as any : '' as any)
+      setValue('soilRehydrationIntervalDays', '' as any)
+    }
+  }
+
+  const filteredSpecies = speciesSearch.trim()
+    ? allSpecies.filter(sp => {
+        const q = speciesSearch.toLowerCase()
+        return sp.commonName.toLowerCase().includes(q) ||
+          sp.scientificName.toLowerCase().includes(q) ||
+          (sp.alternateNames ?? []).some(n => n.toLowerCase().includes(q))
+      })
+    : allSpecies.slice(0, 30)
+
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { sex: 'unknown', status: 'active', feedingIntervalDays: 7, substrateCleanIntervalDays: 30 },
   })
@@ -137,6 +185,7 @@ export default function EditAnimal() {
     try {
       await updateAnimal(id, {
         name: values.name,
+        speciesId: selectedGuideId,
         morph: values.morph || undefined,
         sex: values.sex,
         status: values.status,
@@ -221,6 +270,79 @@ export default function EditAnimal() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
           <p className="text-xs text-gray-600 uppercase tracking-wider mb-0.5">Species</p>
           <p className="text-sm text-gray-300">{animal.species}</p>
+        </div>
+
+        {/* ── Care Guide Link ── */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <BookOpen size={15} className="text-gray-500" />
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Care Guide</p>
+          </div>
+
+          {linkedSpecies ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-emerald-400 truncate">{linkedSpecies.commonName}</p>
+                  <p className="text-xs text-gray-500 italic truncate">{linkedSpecies.scientificName}</p>
+                </div>
+                <button type="button"
+                  onClick={() => { setSelectedGuideId(undefined); setLinkedSpecies(null) }}
+                  className="shrink-0 flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors">
+                  <Unlink size={12} /> Unlink
+                </button>
+              </div>
+              <button type="button"
+                onClick={() => applyScheduleFromGuide(linkedSpecies)}
+                className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2">
+                <RefreshCw size={13} /> Apply schedule from guide
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <p className="text-xs text-gray-600 leading-snug">
+                No care guide linked. Link one to apply species-specific feeding and care schedules.
+              </p>
+              {!showSpeciesPicker ? (
+                <button type="button" onClick={() => setShowSpeciesPicker(true)}
+                  className="flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition-colors">
+                  <Link2 size={14} /> Link a care guide
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <input
+                    type="search"
+                    placeholder="Search species…"
+                    value={speciesSearch}
+                    onChange={e => setSpeciesSearch(e.target.value)}
+                    className="input-field text-sm"
+                    autoFocus
+                  />
+                  {filteredSpecies.length > 0 && (
+                    <div className="max-h-44 overflow-y-auto rounded-xl border border-gray-700 divide-y divide-gray-800">
+                      {filteredSpecies.map(sp => (
+                        <button key={sp.id} type="button"
+                          onClick={() => {
+                            setSelectedGuideId(sp.id)
+                            setLinkedSpecies(sp)
+                            setShowSpeciesPicker(false)
+                            setSpeciesSearch('')
+                          }}
+                          className="w-full text-left px-3 py-2.5 bg-gray-800 hover:bg-gray-750 transition-colors first:rounded-t-xl last:rounded-b-xl">
+                          <span className="text-sm font-medium text-gray-200">{sp.commonName}</span>
+                          <span className="text-xs text-gray-500 ml-2 italic">{sp.scientificName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => { setShowSpeciesPicker(false); setSpeciesSearch('') }}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

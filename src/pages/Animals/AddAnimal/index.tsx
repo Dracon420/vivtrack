@@ -137,6 +137,7 @@ export default function AddAnimal() {
       const animal = await addAnimal({
         name: finalName,
         species: selectedSpecies?.id ?? 'unknown',
+        speciesId: selectedSpecies?.id,
         morph: info.morph,
         sex: info.sex,
         dateOfBirth: info.dateOfBirth || undefined,
