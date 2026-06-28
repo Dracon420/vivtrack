@@ -69,7 +69,7 @@ export default function QuickLog() {
   })
 
   const onSubmit = async (data: FormValues) => {
-    if (!id) return
+    if (!id || !animal) return
     setSaving(true)
     setSaveError(null)
     try {
