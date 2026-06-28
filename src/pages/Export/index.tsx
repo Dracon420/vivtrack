@@ -333,9 +333,24 @@ function buildPDFHtml(
     </div>
   </div>
 
-  <div class="two-col" style="margin-top:20px">
-    <div><div class="fl">Handler / Owner Signature</div><div class="sl" style="margin-top:22px"></div><div style="font-size:7.5pt;color:#aaa;margin-top:2px">Signature</div></div>
-    <div><div class="fl">Date</div><div class="sl" style="margin-top:22px"></div></div>
+  <div style="margin-top:20px;border-top:1pt solid #ddd;padding-top:12px">
+    <div class="fl" style="margin-bottom:5px">Releasing Party (Current Owner / Handler)</div>
+    <div class="two-col">
+      <div><div class="fl">Name</div><div class="sl"></div></div>
+      <div><div class="fl">Date</div><div class="sl"></div></div>
+    </div>
+    <div class="sl" style="margin-top:16px"></div>
+    <div style="font-size:7pt;color:#aaa;margin-top:2px">Signature</div>
+  </div>
+
+  <div style="margin-top:16px;border-top:1pt solid #ddd;padding-top:12px">
+    <div class="fl" style="margin-bottom:5px">Receiving Party &nbsp;<span style="font-weight:normal;text-transform:none;letter-spacing:normal;color:#777">— Vet &nbsp;/&nbsp; Transporter &nbsp;/&nbsp; Rescue &nbsp;/&nbsp; New Owner</span></div>
+    <div class="two-col">
+      <div><div class="fl">Name</div><div class="sl"></div></div>
+      <div><div class="fl">Date</div><div class="sl"></div></div>
+    </div>
+    <div class="sl" style="margin-top:16px"></div>
+    <div style="font-size:7pt;color:#aaa;margin-top:2px">Signature</div>
   </div>
 
   ${footer('Transport Record')}
