@@ -15,7 +15,9 @@ export type CareEventType =
   | 'temperature_check'
   | 'humidity_check'
   | 'photo'
-  | 'soil_rehydration';
+  | 'soil_rehydration'
+  | 'substrate_change'
+  | 'custom_task';
 
 export type FeedingResult = 'accepted' | 'refused' | 'partial' | 'regurgitated';
 export type ShedResult = 'complete' | 'partial' | 'stuck_shed' | 'assisted';
@@ -49,6 +51,8 @@ export interface CareEvent {
 
   medicationId?: string;
   medicationDoseGiven?: string;
+
+  customTaskId?: string;
 
   notes?: string;
   photoIds?: string[];

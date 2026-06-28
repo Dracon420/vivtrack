@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2, Star } from 'lucide-react'
-import { useAnimal, updateAnimal } from '@/db/hooks/useAnimals'
+import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2, Star, Check } from 'lucide-react'
+import { useAnimal, updateAnimal, useCareSchedule, saveCareSchedule } from '@/db/hooks/useAnimals'
 import { useCareEvents, deleteCareEvent } from '@/db/hooks/useCareEvents'
 import { useWeightRecords } from '@/db/hooks/useWeightRecords'
 import { useActiveMedications } from '@/db/hooks/useMedications'
@@ -9,7 +9,7 @@ import { useEnclosure } from '@/db/hooks/useEnclosures'
 import { formatDate, timeAgo } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import CropModal from '@/components/CropModal'
-import type { CareEvent, Animal, AppPhoto } from '@/types'
+import type { CareEvent, Animal, AppPhoto, CustomTask } from '@/types'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -23,12 +23,210 @@ const statusColors: Record<Animal['status'], string> = {
 
 const eventIcon: Record<string, string> = {
   feeding: '🍖', watering: '🫙', misting: '💧', substrate_clean: '🧹',
-  full_clean: '✨', shed: '🔄', handling: '🤝', weight: '⚖️',
-  medication_dose: '💊', vet_visit: '🏥', note: '📝',
+  substrate_change: '🪨', full_clean: '✨', shed: '🔄', handling: '🤝', weight: '⚖️',
+  medication_dose: '💊', vet_visit: '🏥', note: '📝', custom_task: '✅',
   brumation_check: '❄️', temperature_check: '🌡️', humidity_check: '☁️',
 }
 
-type Tab = 'overview' | 'care_log' | 'weight' | 'medications' | 'photos'
+type Tab = 'overview' | 'care_log' | 'weight' | 'medications' | 'photos' | 'schedule'
+
+// ── Schedule Tab ─────────────────────────────────────────────────────────────
+function ScheduleRow({
+  label, emoji, value, unit, onChange, placeholder = '—',
+  unitOptions,
+}: {
+  label: string; emoji: string; value: string; unit?: string
+  onChange: (val: string, unit?: string) => void
+  placeholder?: string
+  unitOptions?: { value: string; label: string }[]
+}) {
+  return (
+    <div className="flex items-center gap-3 py-3 border-b border-gray-800 last:border-0">
+      <span className="text-xl w-7 shrink-0">{emoji}</span>
+      <span className="flex-1 text-sm text-gray-200 font-medium">{label}</span>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-xs text-gray-500">every</span>
+        <input
+          type="number" min="1" value={value} placeholder={placeholder}
+          onChange={e => onChange(e.target.value, unit)}
+          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500"
+        />
+        {unitOptions ? (
+          <select
+            value={unit} onChange={e => onChange(value, e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-400 focus:outline-none focus:border-emerald-500">
+            {unitOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <span className="text-xs text-gray-500">days</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ScheduleTab({ animalId }: { animalId: string }) {
+  const schedule = useCareSchedule(animalId)
+  const [seeded, setSeeded] = useState(false)
+
+  const [feeding, setFeeding] = useState('')
+  const [mistingVal, setMistingVal] = useState('')
+  const [mistingUnit, setMistingUnit] = useState<'hours' | 'days'>('hours')
+  const [waterChange, setWaterChange] = useState('')
+  const [substrateClean, setSubstrateClean] = useState('')
+  const [substrateChange, setSubstrateChange] = useState('')
+
+  const [customTasks, setCustomTasks] = useState<CustomTask[]>([])
+  const [newName, setNewName] = useState('')
+  const [newVal, setNewVal] = useState('')
+  const [newUnit, setNewUnit] = useState<CustomTask['intervalUnit']>('days')
+
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!schedule || seeded) return
+    setFeeding(schedule.feedingIntervalDays?.toString() ?? '')
+    if (schedule.mistingInterval) {
+      setMistingVal(schedule.mistingInterval.toString())
+      setMistingUnit(schedule.mistingIntervalUnit ?? 'hours')
+    } else if (schedule.mistingIntervalHours) {
+      setMistingVal(schedule.mistingIntervalHours.toString())
+      setMistingUnit('hours')
+    }
+    setWaterChange(schedule.waterChangeIntervalDays?.toString() ?? '')
+    setSubstrateClean(schedule.substrateCleanIntervalDays?.toString() ?? '')
+    setSubstrateChange(schedule.substrateChangeIntervalDays?.toString() ?? '')
+    setCustomTasks(schedule.customTasks ?? [])
+    setSeeded(true)
+  }, [schedule, seeded])
+
+  const addCustomTask = () => {
+    const n = parseInt(newVal)
+    if (!newName.trim() || !n || n < 1) return
+    const task: CustomTask = { id: uuidv4(), name: newName.trim(), intervalValue: n, intervalUnit: newUnit }
+    setCustomTasks(prev => [...prev, task])
+    setNewName(''); setNewVal('')
+  }
+
+  const removeCustomTask = (id: string) => setCustomTasks(prev => prev.filter(t => t.id !== id))
+
+  const handleSave = async () => {
+    setSaving(true)
+    const mi = parseInt(mistingVal) || undefined
+    await saveCareSchedule({
+      id: schedule?.id,
+      animalId,
+      feedingIntervalDays: parseInt(feeding) || 7,
+      mistingInterval: mi,
+      mistingIntervalUnit: mi ? mistingUnit : undefined,
+      mistingIntervalHours: mi ? (mistingUnit === 'hours' ? mi : mi * 24) : undefined,
+      mistingType: schedule?.mistingType,
+      mistingScheduleType: schedule?.mistingScheduleType,
+      mistingTimes: schedule?.mistingTimes,
+      waterChangeIntervalDays: parseInt(waterChange) || undefined,
+      substrateCleanIntervalDays: parseInt(substrateClean) || 30,
+      substrateChangeIntervalDays: parseInt(substrateChange) || undefined,
+      medicationReminders: schedule?.medicationReminders ?? false,
+      customTasks,
+      updatedAt: new Date().toISOString(),
+    })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const intervalUnitOpts = [
+    { value: 'hours', label: 'hrs' },
+    { value: 'days',  label: 'days' },
+    { value: 'weeks', label: 'wks' },
+    { value: 'months', label: 'mo' },
+  ]
+  const mistingUnitOpts = [
+    { value: 'hours', label: 'hrs' },
+    { value: 'days',  label: 'days' },
+  ]
+
+  return (
+    <div className="space-y-4 pb-4">
+      {/* Built-in tasks */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl px-4">
+        <ScheduleRow label="Feeding" emoji="🍖" value={feeding} onChange={v => setFeeding(v)} />
+        <ScheduleRow
+          label="Misting" emoji="💧" value={mistingVal} unit={mistingUnit}
+          onChange={(v, u) => { setMistingVal(v); if (u) setMistingUnit(u as 'hours' | 'days') }}
+          unitOptions={mistingUnitOpts}
+        />
+        <ScheduleRow label="Water Change" emoji="🫙" value={waterChange} onChange={v => setWaterChange(v)} />
+        <ScheduleRow label="Substrate Clean" emoji="🧹" value={substrateClean} onChange={v => setSubstrateClean(v)} />
+        <ScheduleRow label="Substrate Change" emoji="🪨" value={substrateChange} onChange={v => setSubstrateChange(v)} />
+      </div>
+
+      {/* Custom tasks */}
+      <div>
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Custom Tasks</p>
+        {customTasks.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 mb-3">
+            {customTasks.map(t => (
+              <div key={t.id} className="flex items-center gap-3 py-3 border-b border-gray-800 last:border-0">
+                <span className="text-xl">✅</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-200 font-medium truncate">{t.name}</p>
+                  <p className="text-xs text-gray-500">every {t.intervalValue} {t.intervalUnit}</p>
+                </div>
+                <button onClick={() => removeCustomTask(t.id)} className="text-gray-600 hover:text-red-400 p-1 transition-colors">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add custom task */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+          <p className="text-xs text-gray-500 font-medium">Add custom task</p>
+          <input
+            value={newName} onChange={e => setNewName(e.target.value)}
+            placeholder="Task name (e.g. Vitamin supplement)"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+          />
+          <div className="flex gap-2">
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className="text-xs text-gray-500 shrink-0">every</span>
+              <input
+                type="number" min="1" value={newVal} onChange={e => setNewVal(e.target.value)}
+                placeholder="1"
+                className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500"
+              />
+              <select
+                value={newUnit} onChange={e => setNewUnit(e.target.value as CustomTask['intervalUnit'])}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-emerald-500">
+                {intervalUnitOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={addCustomTask}
+              disabled={!newName.trim() || !newVal}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Save */}
+      <button
+        onClick={handleSave} disabled={saving}
+        className={cn(
+          'w-full py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2',
+          saved ? 'bg-emerald-600 text-white' : 'bg-emerald-500 hover:bg-emerald-400 text-white',
+          saving && 'opacity-60'
+        )}>
+        {saved ? <><Check size={16} /> Saved</> : saving ? 'Saving…' : 'Save Schedule'}
+      </button>
+    </div>
+  )
+}
 
 function CareEventRow({ event, onDelete }: { event: CareEvent; onDelete: (id: string) => void }) {
   const [confirming, setConfirming] = useState(false)
@@ -429,6 +627,7 @@ export default function AnimalProfile() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'care_log', label: 'Care Log' },
+    { key: 'schedule', label: 'Schedule' },
     { key: 'weight', label: 'Weight' },
     { key: 'medications', label: 'Meds' },
     { key: 'photos', label: `Photos${(animal.photos?.length ?? 0) > 0 ? ` (${animal.photos!.length})` : ''}` },
@@ -483,13 +682,14 @@ export default function AnimalProfile() {
             ) : events.map(e => <CareEventRow key={e.id} event={e} onDelete={handleDeleteEvent} />)}
           </div>
         )}
+        {activeTab === 'schedule' && <ScheduleTab animalId={animal.id} />}
         {activeTab === 'weight' && <WeightTab animalId={animal.id} />}
         {activeTab === 'medications' && <MedsTab animalId={animal.id} />}
         {activeTab === 'photos' && <PhotosTab animal={animal} />}
       </div>
 
       {/* FAB */}
-      {activeTab !== 'photos' && (
+      {activeTab !== 'photos' && activeTab !== 'schedule' && (
         <button
           onClick={() => navigate(`/animals/${animal.id}/log`)}
           className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-30"

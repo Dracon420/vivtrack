@@ -39,6 +39,13 @@ export interface AnimalPhoto {
   createdAt: string;
 }
 
+export interface CustomTask {
+  id: string;
+  name: string;
+  intervalValue: number;
+  intervalUnit: 'hours' | 'days' | 'weeks' | 'months';
+}
+
 export interface AnimalCareSchedule {
   id: string;
   animalId: string;
@@ -55,9 +62,11 @@ export interface AnimalCareSchedule {
   // Soil
   soilRehydrationIntervalDays?: number;
   substrateCleanIntervalDays: number;
+  substrateChangeIntervalDays?: number;
   medicationReminders: boolean;
   additives?: string[];
   quietHoursStart?: string;
   quietHoursEnd?: string;
+  customTasks?: CustomTask[];
   updatedAt: string;
 }

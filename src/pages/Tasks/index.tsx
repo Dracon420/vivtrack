@@ -1,13 +1,14 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, CheckCircle2, Clock } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { addCareEvent } from '@/db/hooks/useCareEvents'
 import { useDashboardTasks } from '@/hooks/useDashboardTasks'
 import { nextDueDate } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay, isToday, isBefore } from 'date-fns'
-import type { AnimalCareSchedule, CareEventType } from '@/types'
+import type { AnimalCareSchedule, CareEventType, CustomTask } from '@/types'
 
 type View = 'day' | 'week' | 'month'
 
@@ -20,36 +21,55 @@ interface ScheduledTask {
   label: string
   dueAt: Date
   done: boolean
+  customTask?: CustomTask
 }
 
 const eventIcon: Record<string, string> = {
   feeding: '🍖', watering: '🫙', misting: '💧', substrate_clean: '🧹',
-  full_clean: '✨', shed: '🔄', handling: '🤝', weight: '⚖️',
-  medication_dose: '💊', vet_visit: '🏥', note: '📝',
+  substrate_change: '🪨', full_clean: '✨', shed: '🔄', handling: '🤝', weight: '⚖️',
+  medication_dose: '💊', vet_visit: '🏥', note: '📝', custom_task: '✅',
   temperature_check: '🌡️', humidity_check: '☁️', colony_low_stock: '⚠️',
 }
 
-function useAllScheduledTasks(from: Date, to: Date): ScheduledTask[] {
+function toIntervalDays(value: number, unit: CustomTask['intervalUnit']): number {
+  if (unit === 'hours')  return value / 24
+  if (unit === 'weeks')  return value * 7
+  if (unit === 'months') return value * 30
+  return value
+}
+
+interface RecentEvent {
+  animalId: string
+  type: string
+  occurredAt: string
+  customTaskId?: string
+}
+
+function useAllScheduledTasks(from: Date, to: Date) {
   const { user } = useAuth()
   const [schedules, setSchedules] = useState<AnimalCareSchedule[]>([])
   const [animals, setAnimals] = useState<{ id: string; name: string; species: string }[]>([])
-  const [recentEvents, setRecentEvents] = useState<{ animalId: string; type: string; occurredAt: string }[]>([])
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
+  const [tick, setTick] = useState(0)
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user) return
-    Promise.all([
+    const [aRes, sRes, eRes] = await Promise.all([
       supabase.from('animals').select('data').eq('user_id', user.id),
       supabase.from('animal_care_schedules').select('data').eq('user_id', user.id),
       supabase.from('care_events').select('data').eq('user_id', user.id).order('occurred_at', { ascending: false }).limit(500),
-    ]).then(([aRes, sRes, eRes]) => {
-      setAnimals((aRes.data ?? []).map(r => r.data as any).filter((a: any) => a.status === 'active'))
-      setSchedules((sRes.data ?? []).map(r => r.data as AnimalCareSchedule))
-      setRecentEvents((eRes.data ?? []).map(r => r.data as any))
-    })
+    ])
+    setAnimals((aRes.data ?? []).map(r => r.data as any).filter((a: any) => a.status === 'active'))
+    setSchedules((sRes.data ?? []).map(r => r.data as AnimalCareSchedule))
+    setRecentEvents((eRes.data ?? []).map(r => r.data as RecentEvent))
   }, [user?.id])
 
-  return useMemo(() => {
-    const tasks: ScheduledTask[] = []
+  useEffect(() => { fetchData() }, [fetchData, tick])
+
+  const refetch = useCallback(() => setTick(t => t + 1), [])
+
+  const tasks = useMemo(() => {
+    const result: ScheduledTask[] = []
     const fromMs = from.getTime()
     const toMs = to.getTime()
 
@@ -61,12 +81,15 @@ function useAllScheduledTasks(from: Date, to: Date): ScheduledTask[] {
       const lastOf = (type: string) =>
         animalEvents.filter(e => e.type === type).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]
 
+      // Built-in intervals
       const intervals: { type: CareEventType; label: string; intervalDays: number }[] = []
 
       if (schedule.feedingIntervalDays)
         intervals.push({ type: 'feeding', label: 'Feeding', intervalDays: schedule.feedingIntervalDays })
       if (schedule.substrateCleanIntervalDays)
-        intervals.push({ type: 'substrate_clean', label: 'Enclosure Clean', intervalDays: schedule.substrateCleanIntervalDays })
+        intervals.push({ type: 'substrate_clean', label: 'Substrate Clean', intervalDays: schedule.substrateCleanIntervalDays })
+      if (schedule.substrateChangeIntervalDays)
+        intervals.push({ type: 'substrate_change', label: 'Substrate Change', intervalDays: schedule.substrateChangeIntervalDays })
       if (schedule.mistingIntervalHours)
         intervals.push({ type: 'misting', label: 'Misting', intervalDays: schedule.mistingIntervalHours / 24 })
       if (schedule.waterChangeIntervalDays)
@@ -83,15 +106,36 @@ function useAllScheduledTasks(from: Date, to: Date): ScheduledTask[] {
         while (due.getTime() <= toMs && iterations++ < 30) {
           if (due.getTime() >= fromMs - 86400000) {
             const doneToday = animalEvents.some(e => e.type === type && isSameDay(new Date(e.occurredAt), due))
-            tasks.push({
+            result.push({
               id: `${animal.id}-${type}-${due.getTime()}`,
-              animalId: animal.id,
-              animalName: animal.name,
-              species: animal.species,
-              type,
-              label,
-              dueAt: new Date(due),
-              done: doneToday,
+              animalId: animal.id, animalName: animal.name, species: animal.species,
+              type, label, dueAt: new Date(due), done: doneToday,
+            })
+          }
+          due = nextDueDate(due.toISOString(), intervalDays)
+        }
+      }
+
+      // Custom tasks
+      for (const ct of schedule.customTasks ?? []) {
+        const intervalDays = toIntervalDays(ct.intervalValue, ct.intervalUnit)
+        const last = animalEvents
+          .filter(e => e.type === 'custom_task' && e.customTaskId === ct.id)
+          .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]
+        if (!last) continue
+
+        let due = nextDueDate(last.occurredAt, intervalDays)
+        let iterations = 0
+        while (due.getTime() <= toMs && iterations++ < 30) {
+          if (due.getTime() >= fromMs - 86400000) {
+            const doneToday = animalEvents.some(
+              e => e.type === 'custom_task' && e.customTaskId === ct.id && isSameDay(new Date(e.occurredAt), due)
+            )
+            result.push({
+              id: `${animal.id}-custom-${ct.id}-${due.getTime()}`,
+              animalId: animal.id, animalName: animal.name, species: animal.species,
+              type: 'custom_task', label: ct.name, dueAt: new Date(due), done: doneToday,
+              customTask: ct,
             })
           }
           due = nextDueDate(due.toISOString(), intervalDays)
@@ -99,8 +143,10 @@ function useAllScheduledTasks(from: Date, to: Date): ScheduledTask[] {
       }
     }
 
-    return tasks.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
+    return result.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
   }, [animals, schedules, recentEvents, from.getTime(), to.getTime()])
+
+  return { tasks, refetch }
 }
 
 export default function TasksPage() {
@@ -108,11 +154,11 @@ export default function TasksPage() {
   const [view, setView] = useState<View>('week')
   const [anchor, setAnchor] = useState(new Date())
   const dashboardTasks = useDashboardTasks()
+  const [loggingId, setLoggingId] = useState<string | null>(null)
 
   const { from, to, label: rangeLabel } = useMemo(() => {
     if (view === 'day') {
-      const d = new Date(anchor)
-      d.setHours(0, 0, 0, 0)
+      const d = new Date(anchor); d.setHours(0, 0, 0, 0)
       const e = new Date(d); e.setHours(23, 59, 59)
       return { from: d, to: e, label: format(d, 'EEEE, MMMM d') }
     }
@@ -126,27 +172,38 @@ export default function TasksPage() {
     return { from: s, to: e, label: format(anchor, 'MMMM yyyy') }
   }, [view, anchor.toDateString()])
 
-  const tasks = useAllScheduledTasks(from, to)
+  const { tasks, refetch } = useAllScheduledTasks(from, to)
 
-  const navigate1 = () => {
+  const navigateRange = (dir: 1 | -1) => {
     const d = new Date(anchor)
-    if (view === 'day') d.setDate(d.getDate() + 1)
-    else if (view === 'week') d.setDate(d.getDate() + 7)
-    else d.setMonth(d.getMonth() + 1)
-    setAnchor(d)
-  }
-  const navigate_1 = () => {
-    const d = new Date(anchor)
-    if (view === 'day') d.setDate(d.getDate() - 1)
-    else if (view === 'week') d.setDate(d.getDate() - 7)
-    else d.setMonth(d.getMonth() - 1)
+    if (view === 'day') d.setDate(d.getDate() + dir)
+    else if (view === 'week') d.setDate(d.getDate() + 7 * dir)
+    else d.setMonth(d.getMonth() + dir)
     setAnchor(d)
   }
 
   const handleLog = async (task: ScheduledTask) => {
-    if (task.animalId && task.type !== 'colony_low_stock') {
-      navigate(`/animals/${task.animalId}/log?type=${task.type}`)
+    if (!task.animalId) return
+
+    if (task.type === 'custom_task' && task.customTask) {
+      if (loggingId === task.id) return
+      setLoggingId(task.id)
+      try {
+        await addCareEvent({
+          animalId: task.animalId,
+          type: 'custom_task',
+          occurredAt: new Date().toISOString(),
+          customTaskId: task.customTask.id,
+          notes: task.customTask.name,
+        })
+        refetch()
+      } finally {
+        setLoggingId(null)
+      }
+      return
     }
+
+    navigate(`/animals/${task.animalId}/log?type=${task.type}`)
   }
 
   // Group tasks by day
@@ -158,10 +215,8 @@ export default function TasksPage() {
       arr.push(t)
       map.set(key, arr)
     })
-    // Build list of days in range
     const result: { date: Date; key: string; tasks: ScheduledTask[] }[] = []
-    let cur = new Date(from)
-    cur.setHours(0, 0, 0, 0)
+    let cur = new Date(from); cur.setHours(0, 0, 0, 0)
     const end = new Date(to)
     while (cur <= end) {
       const key = format(cur, 'yyyy-MM-dd')
@@ -203,18 +258,22 @@ export default function TasksPage() {
 
       {/* Range navigator */}
       <div className="px-4 mb-4 flex items-center justify-between gap-3">
-        <button onClick={navigate_1} className="text-gray-400 hover:text-gray-200 p-1.5 bg-gray-800 rounded-lg"><ChevronLeft size={18} /></button>
+        <button onClick={() => navigateRange(-1)} className="text-gray-400 hover:text-gray-200 p-1.5 bg-gray-800 rounded-lg">
+          <ChevronLeft size={18} />
+        </button>
         <p className="text-sm font-semibold text-gray-200 text-center flex-1">{rangeLabel}</p>
-        <button onClick={navigate1} className="text-gray-400 hover:text-gray-200 p-1.5 bg-gray-800 rounded-lg"><ChevronRight size={18} /></button>
+        <button onClick={() => navigateRange(1)} className="text-gray-400 hover:text-gray-200 p-1.5 bg-gray-800 rounded-lg">
+          <ChevronRight size={18} />
+        </button>
       </div>
 
-      {/* Task list grouped by day */}
+      {/* Task list */}
       <div className="px-4 space-y-4">
         {days.length === 0 && (
           <div className="text-center py-12">
             <CheckCircle2 size={40} className="text-emerald-500 mx-auto mb-3" />
             <p className="text-gray-400 font-medium">No tasks this {view}</p>
-            <p className="text-gray-600 text-sm mt-1">Set care schedules on your animals to see tasks here.</p>
+            <p className="text-gray-600 text-sm mt-1">Set schedules on your animals to see tasks here.</p>
           </div>
         )}
         {days.map(({ date, key, tasks: dayTasks }) => {
@@ -239,9 +298,10 @@ export default function TasksPage() {
                 {dayTasks.map(task => {
                   const past = isBefore(task.dueAt, new Date())
                   const urgent = past && !task.done
+                  const isLogging = loggingId === task.id
                   return (
                     <div key={task.id}
-                      className={cn('bg-gray-900 border rounded-xl px-4 py-3 flex items-center gap-3 transition-colors',
+                      className={cn('bg-gray-900 border rounded-xl px-4 py-3 flex items-center gap-3',
                         task.done ? 'border-emerald-500/20 opacity-60' :
                         urgent ? 'border-red-500/40' : 'border-gray-800'
                       )}>
@@ -250,7 +310,7 @@ export default function TasksPage() {
                         <p className={cn('text-sm font-semibold truncate', task.done ? 'text-gray-500 line-through' : 'text-gray-100')}>
                           {task.animalName}
                         </p>
-                        <p className="text-xs text-gray-500 capitalize">{task.label}</p>
+                        <p className="text-xs text-gray-500">{task.label}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {task.done ? (
@@ -259,9 +319,11 @@ export default function TasksPage() {
                           <span className="text-xs text-red-400 flex items-center gap-1"><Clock size={13} /> Overdue</span>
                         ) : null}
                         {!task.done && task.animalId && task.type !== 'colony_low_stock' && (
-                          <button onClick={() => handleLog(task)}
-                            className="text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-white px-2.5 py-1.5 rounded-lg transition-colors">
-                            Log
+                          <button
+                            onClick={() => handleLog(task)}
+                            disabled={isLogging}
+                            className="text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg transition-colors">
+                            {isLogging ? '…' : 'Log'}
                           </button>
                         )}
                       </div>
