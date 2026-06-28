@@ -28,6 +28,7 @@ const Export = lazy(() => import('@/pages/Export'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const PhotoLibrary = lazy(() => import('@/pages/Photos'))
 const Tasks = lazy(() => import('@/pages/Tasks'))
+const About = lazy(() => import('@/pages/About'))
 
 function PageLoader() {
   return (
@@ -123,6 +124,9 @@ function AppRoutes() {
           } />
           <Route path="tasks" element={
             <Suspense fallback={<PageLoader />}><Tasks /></Suspense>
+          } />
+          <Route path="about" element={
+            <Suspense fallback={<PageLoader />}><About /></Suspense>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

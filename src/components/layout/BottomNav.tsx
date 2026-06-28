@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, PawPrint, LayoutGrid, Sprout, MoreHorizontal, X, Bug, Dna, DollarSign, Download, Settings, BookOpen, ScanLine, Images, CalendarDays } from 'lucide-react'
+import { Home, PawPrint, LayoutGrid, Sprout, MoreHorizontal, X, Bug, Dna, DollarSign, Download, Settings, BookOpen, ScanLine, Images, CalendarDays, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
@@ -26,6 +26,7 @@ const MORE_ITEMS = [
   { to: '/expenses', icon: <DollarSign size={22} />, label: 'Expenses', desc: 'Track costs' },
   { to: '/export', icon: <Download size={22} />, label: 'Export', desc: 'PDF, CSV & backup' },
   { to: '/settings', icon: <Settings size={22} />, label: 'Settings', desc: 'Preferences & account' },
+  { to: '/about', icon: <HelpCircle size={22} />, label: 'About', desc: 'Guide & app info' },
 ]
 
 export default function BottomNav() {
