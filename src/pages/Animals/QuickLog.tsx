@@ -50,6 +50,7 @@ export default function QuickLog() {
   const [eventType, setEventType] = useState<CareEventType>(defaultType)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedColonyId, setSelectedColonyId] = useState('')
 
   const feeders = useFeederColonies()
@@ -62,11 +63,13 @@ export default function QuickLog() {
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { occurredAt: localNow },
+    shouldUnregister: true,
   })
 
   const onSubmit = async (data: FormValues) => {
     if (!id) return
     setSaving(true)
+    setSaveError(null)
     try {
       await addCareEvent({
         animalId: id,
@@ -102,6 +105,8 @@ export default function QuickLog() {
 
       setSaved(true)
       setTimeout(() => navigate(`/animals/${id}`), 600)
+    } catch (err: any) {
+      setSaveError(err?.message || err?.details || JSON.stringify(err))
     } finally {
       setSaving(false)
     }
@@ -290,6 +295,10 @@ export default function QuickLog() {
             <span className="flex items-center justify-center gap-2"><Check size={18} /> Logged!</span>
           ) : saving ? 'Saving...' : 'Save Log Entry'}
         </button>
+
+        {saveError && (
+          <p className="text-xs text-red-400 mt-2 text-center">Save failed: {saveError}</p>
+        )}
       </form>
 
       <style>{`.input-field { width: 100%; background: #111827; border: 1px solid #1f2937; color: #f3f4f6; border-radius: 0.75rem; padding: 0.75rem 1rem; font-size: 0.875rem; outline: none; } .input-field:focus { border-color: rgba(16,185,129,0.5); } select.input-field option { background: #111827; }`}</style>
