@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, CheckCircle2, Bug, Flame, Settings, X, Snowflake, ChevronRight } from 'lucide-react'
+import { Plus, CheckCircle2, Bug, Flame, Settings, X, Snowflake, ChevronRight, ArrowLeft } from 'lucide-react'
 import { useDashboardTasks } from '@/hooks/useDashboardTasks'
 import { useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
@@ -130,6 +130,13 @@ export default function Dashboard() {
   const { dashboardWidgets, setDashboardWidget, tempUnit } = useUIStore()
   const [customizing, setCustomizing] = useState(false)
   const [allSpecies, setAllSpecies] = useState<SpeciesTemplate[]>([])
+  const [fabOpen, setFabOpen] = useState(false)
+  // null = main menu, 'choose_type' = picking entity type for log task,
+  // 'animal'|'plant'|'enclosure' = picking specific entity
+  const [logTaskMode, setLogTaskMode] = useState<null | 'choose_type' | 'animal' | 'plant' | 'enclosure'>(null)
+
+  const closeMenu = () => { setFabOpen(false); setLogTaskMode(null) }
+  const handleBack = () => setLogTaskMode(logTaskMode === 'choose_type' ? null : 'choose_type')
 
   useEffect(() => { loadSpecies().then(setAllSpecies) }, [])
 
@@ -423,11 +430,161 @@ export default function Dashboard() {
       )}
 
       {/* FAB */}
-      <button onClick={() => navigate('/animals/add')}
+      <button onClick={() => setFabOpen(true)}
         className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-30"
-        aria-label="Add animal">
+        aria-label="Quick add">
         <Plus size={24} />
       </button>
+
+      {/* ── Quick Add Overlay ── */}
+      {fabOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-40" onClick={closeMenu} />
+          <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 rounded-t-2xl z-50 pb-10">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-gray-700 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center gap-2 px-4 py-3">
+              {logTaskMode !== null && (
+                <button onClick={handleBack} className="text-gray-400 hover:text-gray-200 p-1 -ml-1">
+                  <ArrowLeft size={20} />
+                </button>
+              )}
+              <p className="text-base font-semibold text-gray-100 flex-1">
+                {logTaskMode === null ? 'Quick Add'
+                  : logTaskMode === 'choose_type' ? 'Log task for…'
+                  : logTaskMode === 'animal' ? 'Pick animal'
+                  : logTaskMode === 'plant' ? 'Pick plant'
+                  : 'Pick enclosure'}
+              </p>
+              <button onClick={closeMenu} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* ── Main menu ── */}
+            {logTaskMode === null && (
+              <div className="px-4 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { emoji: '🦎', label: 'Animal',    action: () => { navigate('/animals/add'); closeMenu() } },
+                    { emoji: '🏠', label: 'Enclosure', action: () => { navigate('/enclosures/add'); closeMenu() } },
+                    { emoji: '🌿', label: 'Plant',     action: () => { navigate('/plants'); closeMenu() } },
+                    { emoji: '🐛', label: 'Colony',    action: () => { navigate('/colonies'); closeMenu() } },
+                  ] as const).map(item => (
+                    <button key={item.label} onClick={item.action}
+                      className="flex items-center gap-3 px-4 py-3.5 bg-gray-800 hover:bg-gray-700 rounded-xl text-left transition-colors">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <span className="text-sm font-medium text-gray-200">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setLogTaskMode('choose_type')}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 rounded-xl text-left transition-colors">
+                  <span className="text-2xl">📋</span>
+                  <span className="text-sm font-medium text-emerald-300">Log a Task…</span>
+                  <ChevronRight size={16} className="text-emerald-500 ml-auto" />
+                </button>
+              </div>
+            )}
+
+            {/* ── Entity type picker ── */}
+            {logTaskMode === 'choose_type' && (
+              <div className="px-4 grid grid-cols-2 gap-2">
+                {([
+                  { type: 'animal' as const,    emoji: '🦎', label: 'Animal' },
+                  { type: 'plant' as const,     emoji: '🌿', label: 'Plant' },
+                  { type: 'enclosure' as const, emoji: '🏠', label: 'Enclosure' },
+                  { type: 'colony' as const,    emoji: '🐛', label: 'Colony' },
+                ]).map(item => (
+                  <button key={item.type}
+                    onClick={() => {
+                      if (item.type === 'colony') { navigate('/colonies'); closeMenu() }
+                      else setLogTaskMode(item.type)
+                    }}
+                    className="flex flex-col items-center gap-2 p-5 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">
+                    <span className="text-3xl">{item.emoji}</span>
+                    <span className="text-sm font-medium text-gray-300">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Animal picker ── */}
+            {logTaskMode === 'animal' && (
+              <div className="px-4 space-y-1.5 max-h-72 overflow-y-auto">
+                {activeAnimals.length === 0 && (
+                  <p className="text-center text-sm text-gray-500 py-8">No active animals</p>
+                )}
+                {activeAnimals.map(a => (
+                  <button key={a.id} onClick={() => { navigate(`/animals/${a.id}/log`); closeMenu() }}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-left transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-xl overflow-hidden shrink-0">
+                      {a.thumbnailBase64
+                        ? <img src={a.thumbnailBase64} className="w-full h-full object-cover" />
+                        : getAnimalEmoji(a.species)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-100 truncate">{a.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{a.species}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-gray-600 shrink-0 ml-auto" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Plant picker ── */}
+            {logTaskMode === 'plant' && (
+              <div className="px-4 space-y-1.5 max-h-72 overflow-y-auto">
+                {(plants ?? []).length === 0 && (
+                  <p className="text-center text-sm text-gray-500 py-8">No plants added yet</p>
+                )}
+                {(plants ?? []).map(p => (
+                  <button key={p.id} onClick={() => { navigate(`/plants/${p.id}`); closeMenu() }}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-left transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-xl overflow-hidden shrink-0">
+                      {p.thumbnailBase64
+                        ? <img src={p.thumbnailBase64} className="w-full h-full object-cover" />
+                        : (PLANT_TYPE_EMOJI[p.type] ?? '🌱')}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-100 truncate">{p.name}</p>
+                      <p className="text-xs text-gray-500 truncate capitalize">{p.type}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-gray-600 shrink-0 ml-auto" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── Enclosure picker ── */}
+            {logTaskMode === 'enclosure' && (
+              <div className="px-4 space-y-1.5 max-h-72 overflow-y-auto">
+                {(enclosures ?? []).length === 0 && (
+                  <p className="text-center text-sm text-gray-500 py-8">No enclosures added yet</p>
+                )}
+                {(enclosures ?? []).map(enc => (
+                  <button key={enc.id} onClick={() => { navigate(`/enclosures/${enc.id}`); closeMenu() }}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-left transition-colors">
+                    <span className="text-2xl shrink-0">
+                      {ENCLOSURE_EMOJI[enc.enclosureType ?? ''] ?? '🏠'}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-100 truncate">{enc.name}</p>
+                      <p className="text-xs text-gray-500 truncate capitalize">{enc.enclosureType ?? 'enclosure'}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-gray-600 shrink-0 ml-auto" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
