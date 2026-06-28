@@ -151,6 +151,30 @@ create policy "Users own their expenses" on public.expenses
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create index if not exists expenses_user_id_idx on public.expenses (user_id);
 
+-- Breeding records
+drop policy if exists "Users own their breeding records" on public.breeding_records;
+create table if not exists public.breeding_records (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  data jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+alter table public.breeding_records enable row level security;
+create policy "Users own their breeding records" on public.breeding_records
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Incubation logs
+drop policy if exists "Users own their incubation logs" on public.incubation_logs;
+create table if not exists public.incubation_logs (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  data jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+alter table public.incubation_logs enable row level security;
+create policy "Users own their incubation logs" on public.incubation_logs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- ── Subscription / Freemium ───────────────────────────────────────────────
 
 -- User profiles (subscription tier)
@@ -298,3 +322,5 @@ do $$ begin alter publication supabase_realtime add table public.cuc_cultures; e
 do $$ begin alter publication supabase_realtime add table public.colony_log_events; exception when others then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.plants; exception when others then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.expenses; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.breeding_records; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.incubation_logs; exception when others then null; end $$;

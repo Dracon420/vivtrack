@@ -91,7 +91,7 @@ export interface Expense {
 
 /* BreedingRecord */
 export type PairingResult = 'no_interest' | 'locked' | 'copulation_observed' | 'unknown';
-export type ClutchStatus = 'incubating' | 'hatched' | 'failed' | 'infertile';
+export type ClutchStatus = 'pairing' | 'gravid' | 'incubating' | 'hatched' | 'failed' | 'infertile';
 
 export interface PairingEvent {
   id: string;
