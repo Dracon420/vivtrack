@@ -83,6 +83,8 @@ export interface Expense {
   amountCents: number;
   currency: string;
   date: string;
+  autoSource?: 'feeder_harvest';
+  colonyEventId?: string;
   notes?: string;
   createdAt: string;
 }

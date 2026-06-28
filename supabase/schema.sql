@@ -138,6 +138,19 @@ alter table public.plants enable row level security;
 create policy "Users own their plants" on public.plants
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Expenses
+drop policy if exists "Users own their expenses" on public.expenses;
+create table if not exists public.expenses (
+  id uuid primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  data jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+alter table public.expenses enable row level security;
+create policy "Users own their expenses" on public.expenses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists expenses_user_id_idx on public.expenses (user_id);
+
 -- ── Subscription / Freemium ───────────────────────────────────────────────
 
 -- User profiles (subscription tier)
@@ -284,3 +297,4 @@ do $$ begin alter publication supabase_realtime add table public.feeder_colonies
 do $$ begin alter publication supabase_realtime add table public.cuc_cultures; exception when others then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.colony_log_events; exception when others then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.plants; exception when others then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.expenses; exception when others then null; end $$;

@@ -98,7 +98,7 @@ function FeederCard({ colony, onHarvest, onDelete }: { colony: FeederColony; onH
           )}
         </div>
       </div>
-      <div className="flex gap-4 text-sm mb-3">
+      <div className="flex gap-4 text-sm mb-3 flex-wrap">
         <div>
           <p className="text-xs text-gray-600 mb-0.5">Est. count</p>
           <p className="font-semibold text-gray-100">{colony.estimatedCount ?? '—'}</p>
@@ -113,6 +113,20 @@ function FeederCard({ colony, onHarvest, onDelete }: { colony: FeederColony; onH
           <div>
             <p className="text-xs text-gray-600 mb-0.5">Alert at</p>
             <p className="text-gray-300">{colony.lowStockThreshold}</p>
+          </div>
+        )}
+        {colony.costPer && colony.costPerCount && colony.estimatedCount !== undefined && (
+          <div>
+            <p className="text-xs text-gray-600 mb-0.5">~Value</p>
+            <p className="text-emerald-400 font-semibold">
+              ${((colony.estimatedCount * colony.costPer) / colony.costPerCount).toFixed(2)}
+            </p>
+          </div>
+        )}
+        {colony.costPer && colony.costPerCount && (
+          <div>
+            <p className="text-xs text-gray-600 mb-0.5">Per feeder</p>
+            <p className="text-gray-400 text-xs">${(colony.costPer / colony.costPerCount).toFixed(4)}</p>
           </div>
         )}
       </div>
@@ -368,8 +382,17 @@ function AddFeederForm({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState<FeederColony['type']>('roach')
   const [count, setCount] = useState('')
   const [threshold, setThreshold] = useState('')
+  const [costPer, setCostPer] = useState('')
+  const [costPerCount, setCostPerCount] = useState('')
   const handleSave = async () => {
-    await addFeederColony({ name, species, type, estimatedCount: count ? parseInt(count) : undefined, lowStockThreshold: threshold ? parseInt(threshold) : undefined, linkedAnimalIds: [], lastFedDate: undefined, feedingNotes: undefined })
+    await addFeederColony({
+      name, species, type,
+      estimatedCount: count ? parseInt(count) : undefined,
+      lowStockThreshold: threshold ? parseInt(threshold) : undefined,
+      costPer: costPer ? parseFloat(costPer) : undefined,
+      costPerCount: costPerCount ? parseInt(costPerCount) : undefined,
+      linkedAnimalIds: [], lastFedDate: undefined, feedingNotes: undefined,
+    })
     onClose()
   }
   return (
@@ -390,6 +413,14 @@ function AddFeederForm({ onClose }: { onClose: () => void }) {
       <div className="grid grid-cols-2 gap-2">
         <input value={count} onChange={e => setCount(e.target.value)} type="number" placeholder="Est. count" className="f-input" />
         <input value={threshold} onChange={e => setThreshold(e.target.value)} type="number" placeholder="Low stock alert" className="f-input" />
+      </div>
+      <p className="text-xs text-gray-500 font-medium pt-1">Pricing (optional — auto-tracks feed costs)</p>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500 shrink-0">$</span>
+        <input value={costPer} onChange={e => setCostPer(e.target.value)} type="number" min="0" step="0.01" placeholder="Cost" className="f-input flex-1" />
+        <span className="text-xs text-gray-500 shrink-0">per</span>
+        <input value={costPerCount} onChange={e => setCostPerCount(e.target.value)} type="number" min="1" placeholder="Qty" className="f-input flex-1" />
+        <span className="text-xs text-gray-500 shrink-0">feeders</span>
       </div>
       <div className="flex gap-2">
         <button onClick={handleSave} disabled={!name} className="flex-1 py-2 bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-40">Save</button>

@@ -7,6 +7,7 @@ import { ArrowLeft, Check } from 'lucide-react'
 import { useAnimal } from '@/db/hooks/useAnimals'
 import { addCareEvent } from '@/db/hooks/useCareEvents'
 import { useFeederColonies, updateFeederColony, addColonyLogEvent } from '@/db/hooks/useColonies'
+import { addExpense } from '@/db/hooks/useExpenses'
 import { nowISO } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import type { CareEventType, FeedingResult, ShedResult } from '@/types'
@@ -93,7 +94,7 @@ export default function QuickLog() {
           const qty = data.feedingQuantity ?? 1
           const newCount = Math.max(0, (colony.estimatedCount ?? 0) - qty)
           await updateFeederColony(selectedColonyId, { estimatedCount: newCount })
-          await addColonyLogEvent({
+          const colonyEvent = await addColonyLogEvent({
             colonyId: selectedColonyId,
             colonyType: 'feeder',
             eventType: 'harvest',
@@ -101,6 +102,23 @@ export default function QuickLog() {
             harvestQuantity: qty,
             countAfter: newCount,
           })
+          // Auto-create expense if colony has pricing set
+          if (colony.costPer && colony.costPerCount && colony.costPerCount > 0) {
+            const costPerUnit = colony.costPer / colony.costPerCount
+            const totalCents = Math.round(costPerUnit * qty * 100)
+            if (totalCents > 0) {
+              await addExpense({
+                animalId: id,
+                category: 'food',
+                description: `${animal.name} — ${colony.name} (${qty}×)`,
+                amountCents: totalCents,
+                currency: 'USD',
+                date: new Date(data.occurredAt).toISOString().split('T')[0],
+                autoSource: 'feeder_harvest',
+                colonyEventId: colonyEvent.id,
+              })
+            }
+          }
         }
       }
 

@@ -19,6 +19,8 @@ export interface FeederColony {
   lastFedDate?: string;
   feedingNotes?: string;
   lowStockThreshold?: number;
+  costPer?: number;
+  costPerCount?: number;
   linkedAnimalIds: string[];
   notes?: string;
   createdAt: string;
