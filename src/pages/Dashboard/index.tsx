@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, CheckCircle2, Bug, Flame, Settings, X, Snowflake, ChevronRight, ArrowLeft } from 'lucide-react'
 import { useDashboardTasks } from '@/hooks/useDashboardTasks'
+import { useAutoMisting } from '@/hooks/useAutoMisting'
 import { useAnimals } from '@/db/hooks/useAnimals'
 import { useEnclosures } from '@/db/hooks/useEnclosures'
 import { useFeederColonies } from '@/db/hooks/useColonies'
@@ -121,6 +122,7 @@ function SectionHeader({ title, linkTo, linkLabel }: { title: string; linkTo?: s
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
+  useAutoMisting()
   const tasks = useDashboardTasks()
   const animals = useAnimals()
   const enclosures = useEnclosures()
@@ -212,22 +214,26 @@ export default function Dashboard() {
       )}
 
       {/* Stats row */}
-      <div className="px-4 grid grid-cols-3 gap-2 mb-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+      <div className="px-4 grid grid-cols-4 gap-2 mb-6">
+        <button onClick={() => navigate('/animals')} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-gray-700 transition-colors">
           <p className="text-xl font-bold text-gray-100">{activeAnimals.length}</p>
           <p className="text-xs text-gray-500 mt-0.5">Animals</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+        </button>
+        <button onClick={() => navigate('/enclosures')} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-gray-700 transition-colors">
           <p className="text-xl font-bold text-gray-100">{enclosures?.length ?? 0}</p>
           <p className="text-xs text-gray-500 mt-0.5">Enclosures</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+        </button>
+        <button onClick={() => navigate('/plants')} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-gray-700 transition-colors">
+          <p className="text-xl font-bold text-gray-100">{plants?.length ?? 0}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Plants</p>
+        </button>
+        <button onClick={() => navigate('/tasks')} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-left hover:border-gray-700 transition-colors">
           <p className={cn('text-xl font-bold', overdueCount > 0 ? 'text-red-400' : 'text-gray-100')}>
-            {overdueCount + todayCount}
+            {(tasks?.length ?? 0)}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">Tasks Due</p>
-          {overdueCount > 0 && <p className="text-xs text-red-400">{overdueCount} overdue</p>}
-        </div>
+          <p className="text-xs text-gray-500 mt-0.5">Tasks</p>
+          {overdueCount > 0 && <p className="text-xs text-red-400">{overdueCount} late</p>}
+        </button>
       </div>
 
       {/* ── Animal Quick Access ── */}

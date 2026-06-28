@@ -27,6 +27,7 @@ const Expenses = lazy(() => import('@/pages/Expenses'))
 const Export = lazy(() => import('@/pages/Export'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const PhotoLibrary = lazy(() => import('@/pages/Photos'))
+const Tasks = lazy(() => import('@/pages/Tasks'))
 
 function PageLoader() {
   return (
@@ -119,6 +120,9 @@ function AppRoutes() {
           } />
           <Route path="photos" element={
             <Suspense fallback={<PageLoader />}><PhotoLibrary /></Suspense>
+          } />
+          <Route path="tasks" element={
+            <Suspense fallback={<PageLoader />}><Tasks /></Suspense>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

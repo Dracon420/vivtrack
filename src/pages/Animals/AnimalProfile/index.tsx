@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Edit2, Scale, Home, Camera, X, Trash2, Star } from 'lucide-react'
 import { useAnimal, updateAnimal } from '@/db/hooks/useAnimals'
-import { useCareEvents } from '@/db/hooks/useCareEvents'
+import { useCareEvents, deleteCareEvent } from '@/db/hooks/useCareEvents'
 import { useWeightRecords } from '@/db/hooks/useWeightRecords'
 import { useActiveMedications } from '@/db/hooks/useMedications'
 import { useEnclosure } from '@/db/hooks/useEnclosures'
@@ -30,7 +30,8 @@ const eventIcon: Record<string, string> = {
 
 type Tab = 'overview' | 'care_log' | 'weight' | 'medications' | 'photos'
 
-function CareEventRow({ event }: { event: CareEvent }) {
+function CareEventRow({ event, onDelete }: { event: CareEvent; onDelete: (id: string) => void }) {
+  const [confirming, setConfirming] = useState(false)
   const icon = eventIcon[event.type] ?? '📋'
   const label = event.type.replace(/_/g, ' ')
   const detail = event.feedingItem
@@ -45,7 +46,26 @@ function CareEventRow({ event }: { event: CareEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-gray-200 capitalize">{label}</p>
-          <p className="text-xs text-gray-600 shrink-0">{timeAgo(event.occurredAt)}</p>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <p className="text-xs text-gray-600">{timeAgo(event.occurredAt)}</p>
+            {confirming ? (
+              <>
+                <button onClick={() => onDelete(event.id)}
+                  className="text-[11px] text-red-400 font-semibold px-1.5 py-0.5 bg-red-500/20 rounded">
+                  Delete
+                </button>
+                <button onClick={() => setConfirming(false)}
+                  className="text-[11px] text-gray-500 px-1.5 py-0.5 bg-gray-800 rounded">
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirming(true)}
+                className="text-gray-700 hover:text-red-400 transition-colors p-0.5">
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
         </div>
         {detail && <p className="text-xs text-gray-500 mt-0.5 truncate">{detail}</p>}
       </div>
@@ -398,6 +418,8 @@ export default function AnimalProfile() {
   const events = useCareEvents(id, 30)
   const [activeTab, setActiveTab] = useState<Tab>('overview')
 
+  const handleDeleteEvent = async (eventId: string) => { await deleteCareEvent(eventId) }
+
   if (!animal) return (
     <div className="flex items-center justify-center h-40">
       <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -458,7 +480,7 @@ export default function AnimalProfile() {
           <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden">
             {!events?.length ? (
               <p className="text-gray-500 text-sm text-center py-8">No care events yet. Tap + to log one.</p>
-            ) : events.map(e => <CareEventRow key={e.id} event={e} />)}
+            ) : events.map(e => <CareEventRow key={e.id} event={e} onDelete={handleDeleteEvent} />)}
           </div>
         )}
         {activeTab === 'weight' && <WeightTab animalId={animal.id} />}

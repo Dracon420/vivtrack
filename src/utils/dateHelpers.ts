@@ -44,10 +44,10 @@ export function nextDueDate(lastEventDate: string, intervalDays: number): Date {
 }
 
 export function urgencyLevel(dueDate: Date): 'overdue' | 'today' | 'soon' | 'ok' {
-  const days = differenceInDays(dueDate, new Date())
-  if (days < 0) return 'overdue'
-  if (days === 0) return 'today'
-  if (days <= 2) return 'soon'
+  const diffH = (dueDate.getTime() - Date.now()) / 3600000
+  if (diffH < 0) return 'overdue'   // past due
+  if (diffH <= 6) return 'today'    // due within 6 hours
+  if (diffH <= 36) return 'soon'    // due within ~1.5 days
   return 'ok'
 }
 
