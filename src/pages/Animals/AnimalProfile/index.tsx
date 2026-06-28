@@ -69,17 +69,21 @@ function ScheduleTab({ animalId }: { animalId: string }) {
   const schedule = useCareSchedule(animalId)
   const [seeded, setSeeded] = useState(false)
 
+  const todayStr = new Date().toISOString().split('T')[0]
+
   const [feeding, setFeeding] = useState('')
   const [mistingVal, setMistingVal] = useState('')
   const [mistingUnit, setMistingUnit] = useState<'hours' | 'days'>('hours')
   const [waterChange, setWaterChange] = useState('')
   const [substrateClean, setSubstrateClean] = useState('')
   const [substrateChange, setSubstrateChange] = useState('')
+  const [startDate, setStartDate] = useState(todayStr)
 
   const [customTasks, setCustomTasks] = useState<CustomTask[]>([])
   const [newName, setNewName] = useState('')
   const [newVal, setNewVal] = useState('')
   const [newUnit, setNewUnit] = useState<CustomTask['intervalUnit']>('days')
+  const [newStartDate, setNewStartDate] = useState(todayStr)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -97,6 +101,7 @@ function ScheduleTab({ animalId }: { animalId: string }) {
     setWaterChange(schedule.waterChangeIntervalDays?.toString() ?? '')
     setSubstrateClean(schedule.substrateCleanIntervalDays?.toString() ?? '')
     setSubstrateChange(schedule.substrateChangeIntervalDays?.toString() ?? '')
+    if (schedule.scheduleStartDate) setStartDate(schedule.scheduleStartDate.split('T')[0])
     setCustomTasks(schedule.customTasks ?? [])
     setSeeded(true)
   }, [schedule, seeded])
@@ -104,9 +109,13 @@ function ScheduleTab({ animalId }: { animalId: string }) {
   const addCustomTask = () => {
     const n = parseInt(newVal)
     if (!newName.trim() || !n || n < 1) return
-    const task: CustomTask = { id: uuidv4(), name: newName.trim(), intervalValue: n, intervalUnit: newUnit }
+    const task: CustomTask = {
+      id: uuidv4(), name: newName.trim(),
+      intervalValue: n, intervalUnit: newUnit,
+      startDate: new Date(newStartDate).toISOString(),
+    }
     setCustomTasks(prev => [...prev, task])
-    setNewName(''); setNewVal('')
+    setNewName(''); setNewVal(''); setNewStartDate(todayStr)
   }
 
   const removeCustomTask = (id: string) => setCustomTasks(prev => prev.filter(t => t.id !== id))
@@ -127,6 +136,7 @@ function ScheduleTab({ animalId }: { animalId: string }) {
       waterChangeIntervalDays: parseInt(waterChange) || undefined,
       substrateCleanIntervalDays: parseInt(substrateClean) || 30,
       substrateChangeIntervalDays: parseInt(substrateChange) || undefined,
+      scheduleStartDate: startDate ? new Date(startDate).toISOString() : undefined,
       medicationReminders: schedule?.medicationReminders ?? false,
       customTasks,
       updatedAt: new Date().toISOString(),
@@ -149,6 +159,16 @@ function ScheduleTab({ animalId }: { animalId: string }) {
 
   return (
     <div className="space-y-4 pb-4">
+      {/* Start date */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-1">Schedule Start Date</p>
+        <p className="text-xs text-gray-600 mb-3">Tasks appear on the calendar from this date. Use the date you began caring for this animal.</p>
+        <input
+          type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
+        />
+      </div>
+
       {/* Built-in tasks */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl px-4">
         <ScheduleRow label="Feeding" emoji="🍖" value={feeding} onChange={v => setFeeding(v)} />
@@ -172,7 +192,10 @@ function ScheduleTab({ animalId }: { animalId: string }) {
                 <span className="text-xl">✅</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-200 font-medium truncate">{t.name}</p>
-                  <p className="text-xs text-gray-500">every {t.intervalValue} {t.intervalUnit}</p>
+                  <p className="text-xs text-gray-500">
+                    every {t.intervalValue} {t.intervalUnit}
+                    {t.startDate ? ` · starts ${new Date(t.startDate).toLocaleDateString()}` : ''}
+                  </p>
                 </div>
                 <button onClick={() => removeCustomTask(t.id)} className="text-gray-600 hover:text-red-400 p-1 transition-colors">
                   <Trash2 size={15} />
@@ -190,24 +213,29 @@ function ScheduleTab({ animalId }: { animalId: string }) {
             placeholder="Task name (e.g. Vitamin supplement)"
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500"
           />
-          <div className="flex gap-2">
-            <div className="flex items-center gap-1.5 flex-1">
-              <span className="text-xs text-gray-500 shrink-0">every</span>
-              <input
-                type="number" min="1" value={newVal} onChange={e => setNewVal(e.target.value)}
-                placeholder="1"
-                className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500"
-              />
-              <select
-                value={newUnit} onChange={e => setNewUnit(e.target.value as CustomTask['intervalUnit'])}
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-emerald-500">
-                {intervalUnitOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500 shrink-0">every</span>
+            <input
+              type="number" min="1" value={newVal} onChange={e => setNewVal(e.target.value)}
+              placeholder="1"
+              className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500"
+            />
+            <select
+              value={newUnit} onChange={e => setNewUnit(e.target.value as CustomTask['intervalUnit'])}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-300 focus:outline-none focus:border-emerald-500">
+              {intervalUnitOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 shrink-0">start</span>
+            <input
+              type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
+            />
             <button
               onClick={addCustomTask}
               disabled={!newName.trim() || !newVal}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors shrink-0">
               Add
             </button>
           </div>

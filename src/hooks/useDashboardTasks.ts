@@ -47,37 +47,48 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
       const lastOfType = (type: CareEventType) =>
         animalEvents.filter(e => e.type === type).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]
 
+      const start = schedule.scheduleStartDate
+
       if (schedule.feedingIntervalDays) {
-        const last = lastOfType('feeding')
-        if (last) {
-          const due = nextDueDate(last.occurredAt, schedule.feedingIntervalDays)
+        const anchor = lastOfType('feeding')?.occurredAt ?? start
+        if (anchor) {
+          const due = nextDueDate(anchor, schedule.feedingIntervalDays)
           const urgency = urgencyLevel(due)
           if (urgency !== 'ok') result.push({ id: `${animal.id}-feeding`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'feeding', label: 'Feeding', dueAt: due, urgency })
         }
       }
 
       if (schedule.substrateCleanIntervalDays) {
-        const last = animalEvents.filter(e => e.type === 'substrate_clean' || e.type === 'full_clean').sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]
-        if (last) {
-          const due = nextDueDate(last.occurredAt, schedule.substrateCleanIntervalDays)
+        const anchor = animalEvents.filter(e => e.type === 'substrate_clean' || e.type === 'full_clean').sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]?.occurredAt ?? start
+        if (anchor) {
+          const due = nextDueDate(anchor, schedule.substrateCleanIntervalDays)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-clean`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_clean', label: 'Enclosure Clean', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-clean`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_clean', label: 'Substrate Clean', dueAt: due, urgency })
+        }
+      }
+
+      if (schedule.substrateChangeIntervalDays) {
+        const anchor = lastOfType('substrate_change')?.occurredAt ?? start
+        if (anchor) {
+          const due = nextDueDate(anchor, schedule.substrateChangeIntervalDays)
+          const urgency = urgencyLevel(due)
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-substrate-change`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_change', label: 'Substrate Change', dueAt: due, urgency })
         }
       }
 
       if (schedule.mistingIntervalHours) {
-        const last = lastOfType('misting')
-        if (last) {
-          const due = nextDueDate(last.occurredAt, schedule.mistingIntervalHours / 24)
+        const anchor = lastOfType('misting')?.occurredAt ?? start
+        if (anchor) {
+          const due = nextDueDate(anchor, schedule.mistingIntervalHours / 24)
           const urgency = urgencyLevel(due)
           if (urgency !== 'ok') result.push({ id: `${animal.id}-misting`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'misting', label: 'Misting', dueAt: due, urgency })
         }
       }
 
       if (schedule.waterChangeIntervalDays) {
-        const last = lastOfType('watering')
-        if (last) {
-          const due = nextDueDate(last.occurredAt, schedule.waterChangeIntervalDays)
+        const anchor = lastOfType('watering')?.occurredAt ?? start
+        if (anchor) {
+          const due = nextDueDate(anchor, schedule.waterChangeIntervalDays)
           const urgency = urgencyLevel(due)
           if (urgency !== 'ok') result.push({ id: `${animal.id}-watering`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'watering', label: 'Water Change', dueAt: due, urgency })
         }

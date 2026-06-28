@@ -44,6 +44,7 @@ export interface CustomTask {
   name: string;
   intervalValue: number;
   intervalUnit: 'hours' | 'days' | 'weeks' | 'months';
+  startDate?: string;
 }
 
 export interface AnimalCareSchedule {
@@ -63,6 +64,7 @@ export interface AnimalCareSchedule {
   soilRehydrationIntervalDays?: number;
   substrateCleanIntervalDays: number;
   substrateChangeIntervalDays?: number;
+  scheduleStartDate?: string;
   medicationReminders: boolean;
   additives?: string[];
   quietHoursStart?: string;
