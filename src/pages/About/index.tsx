@@ -351,20 +351,35 @@ export default function About() {
         </Section>
 
         {/* ── Scanner ───────────────────────────────────────────────────── */}
-        <Section emoji="📷" title="Scanner">
-          <p>Scan QR codes to jump directly to an animal's Quick Log without navigating through the app. Ideal for night checks when you're moving enclosure to enclosure in the dark.</p>
-          <H>How it works</H>
+        <Section emoji="📷" title="Scanner & NFC Tags">
+          <p>Scan QR codes or tap NFC stickers to jump directly to an animal's Quick Log — no navigation needed. Ideal for night checks when you're moving enclosure to enclosure in the dark.</p>
+          <H>QR codes</H>
           <Steps>
-            <Step n={1}>Open an enclosure's detail page and find the QR code section.</Step>
+            <Step n={1}>Open any enclosure's detail page and tap the <strong>QR & NFC</strong> tab.</Step>
             <Step n={2}>Print the QR code and stick it to the enclosure lid or front panel.</Step>
-            <Step n={3}>Next time you need to log something, open More → Scanner (or the Scanner tab if shown).</Step>
-            <Step n={4}>Point the camera at the QR code — the app instantly navigates to Quick Log for the linked animal.</Step>
+            <Step n={3}>Open More → Scanner, point the camera at the code — Quick Log opens instantly for that animal.</Step>
           </Steps>
-          <H>NFC (Android only)</H>
-          <p>On Android devices with NFC support, you can write a tag using the Enclosure Detail page and then tap your phone to the tag (attached to the enclosure) to open the Quick Log — no camera required.</p>
+          <H>NFC tags — Android (write directly in-app)</H>
+          <p>On <strong>Android Chrome 89+</strong> the app can write NFC stickers without any extra software:</p>
+          <Steps>
+            <Step n={1}>Open an enclosure's detail page and tap the <strong>QR & NFC</strong> tab.</Step>
+            <Step n={2}>Tap <strong>Write NFC Tag</strong> and hold an NFC sticker to the back of your phone.</Step>
+            <Step n={3}>A vibration confirms the write is done. Stick the tag to the enclosure.</Step>
+            <Step n={4}>From now on, tapping the sticker opens Quick Log for that animal instantly.</Step>
+          </Steps>
+          <H>NFC tags — iOS (using NFC Tools app)</H>
+          <p>Apple restricts NFC writing in all iOS browsers. VivTrack detects this and shows a step-by-step guide right inside the enclosure's <strong>QR & NFC</strong> tab — including a one-tap copy of the exact URL you need to paste:</p>
+          <Steps>
+            <Step n={1}>Open the enclosure detail and tap <strong>QR & NFC</strong> — the iOS guide appears automatically.</Step>
+            <Step n={2}>Download <strong>NFC Tools</strong> by wakdev from the App Store (free).</Step>
+            <Step n={3}>Tap <strong>Copy URL</strong> in VivTrack — the scan URL for that enclosure is on your clipboard.</Step>
+            <Step n={4}>In NFC Tools: Write → Add a record → URL → paste → OK → Write → hold phone to sticker.</Step>
+          </Steps>
+          <H>What NFC stickers to buy</H>
+          <p>Any <strong>NTAG213</strong>, NTAG215, or NTAG216 sticker works. Search "NFC sticker tags" on Amazon — a 10-pack costs ~$5–10 and covers your entire collection.</p>
           <H>Manual fallback</H>
-          <p>The Scanner page also has a manual text entry field if the camera or NFC isn't available.</p>
-          <Tip>Small QR code sticker labels work great — print a page of QR codes for all enclosures, cut them out, and stick them somewhere easy to reach on each enclosure.</Tip>
+          <p>The Scanner page has a manual text entry field if the camera or NFC isn't available.</p>
+          <Tip>Stick NFC tags on the inside of enclosure lids — protected, out of sight, and easy to tap during a feeding check without moving anything.</Tip>
         </Section>
 
         {/* ── Species Browser ───────────────────────────────────────────── */}
