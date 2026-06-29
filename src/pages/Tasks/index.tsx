@@ -480,6 +480,215 @@ function TaskSheet({ animals, schedules, editTask, onClose, onSaved }: TaskSheet
   )
 }
 
+// ── Bulk Time Assignment Sheet ────────────────────────────────────────────────
+
+const BULK_TYPE_ORDER = ['feeding', 'misting', 'watering', 'substrate_clean', 'substrate_change', 'custom']
+const BULK_TYPE_LABEL: Record<string, string> = {
+  feeding: 'Feeding', misting: 'Misting', watering: 'Water Change',
+  substrate_clean: 'Substrate Clean', substrate_change: 'Substrate Change', custom: 'Custom Tasks',
+}
+
+interface BulkItem {
+  key: string
+  animalId: string
+  animalName: string
+  taskType: string
+  taskId?: string
+  label: string
+  currentTime?: string
+}
+
+function BulkTimeSheet({ animals, schedules, onClose, onSaved }: {
+  animals: { id: string; name: string }[]
+  schedules: AnimalCareSchedule[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [bulkTime, setBulkTime] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [filter, setFilter] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const allItems = useMemo((): BulkItem[] => {
+    const items: BulkItem[] = []
+    for (const animal of animals) {
+      const s = schedules.find(sc => sc.animalId === animal.id)
+      if (!s) continue
+      if (s.feedingIntervalDays)         items.push({ key: `${animal.id}-feeding`,          animalId: animal.id, animalName: animal.name, taskType: 'feeding',          label: 'Feeding',          currentTime: s.feedingTime })
+      if (s.mistingIntervalHours)        items.push({ key: `${animal.id}-misting`,          animalId: animal.id, animalName: animal.name, taskType: 'misting',          label: 'Misting',          currentTime: s.mistingTime })
+      if (s.waterChangeIntervalDays)     items.push({ key: `${animal.id}-watering`,         animalId: animal.id, animalName: animal.name, taskType: 'watering',         label: 'Water Change',     currentTime: s.wateringTime })
+      if (s.substrateCleanIntervalDays)  items.push({ key: `${animal.id}-substrate_clean`,  animalId: animal.id, animalName: animal.name, taskType: 'substrate_clean',  label: 'Substrate Clean',  currentTime: s.substrateCleanTime })
+      if (s.substrateChangeIntervalDays) items.push({ key: `${animal.id}-substrate_change`, animalId: animal.id, animalName: animal.name, taskType: 'substrate_change', label: 'Substrate Change', currentTime: s.substrateChangeTime })
+      for (const ct of s.customTasks ?? [])
+        items.push({ key: `${animal.id}-custom-${ct.id}`, animalId: animal.id, animalName: animal.name, taskType: 'custom', taskId: ct.id, label: ct.name, currentTime: ct.dueTime })
+    }
+    return items
+  }, [animals, schedules])
+
+  const visible = filter ? allItems.filter(i => i.taskType === filter) : allItems
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, BulkItem[]>()
+    for (const item of visible) {
+      const arr = map.get(item.taskType) ?? []; arr.push(item); map.set(item.taskType, arr)
+    }
+    return map
+  }, [visible])
+
+  const toggle = (key: string) => setSelected(prev => {
+    const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
+  })
+
+  const toggleType = (type: string) => {
+    const typeKeys = (grouped.get(type) ?? []).map(i => i.key)
+    const allSel = typeKeys.every(k => selected.has(k))
+    setSelected(prev => {
+      const next = new Set(prev); typeKeys.forEach(k => allSel ? next.delete(k) : next.add(k)); return next
+    })
+  }
+
+  const toggleAll = () => setSelected(
+    visible.every(i => selected.has(i.key)) ? new Set() : new Set(visible.map(i => i.key))
+  )
+
+  const handleApply = async () => {
+    if (!bulkTime || selected.size === 0) return
+    setSaving(true)
+    try {
+      const byAnimal = new Map<string, BulkItem[]>()
+      for (const key of selected) {
+        const item = allItems.find(i => i.key === key); if (!item) continue
+        const arr = byAnimal.get(item.animalId) ?? []; arr.push(item); byAnimal.set(item.animalId, arr)
+      }
+      for (const [animalId, items] of byAnimal) {
+        const existing = schedules.find(s => s.animalId === animalId); if (!existing) continue
+        const updates: Partial<AnimalCareSchedule> = {}
+        let customTasks = [...(existing.customTasks ?? [])]; let customChanged = false
+        for (const item of items) {
+          if (item.taskType === 'feeding')          updates.feedingTime = bulkTime
+          if (item.taskType === 'misting')          updates.mistingTime = bulkTime
+          if (item.taskType === 'watering')         updates.wateringTime = bulkTime
+          if (item.taskType === 'substrate_clean')  updates.substrateCleanTime = bulkTime
+          if (item.taskType === 'substrate_change') updates.substrateChangeTime = bulkTime
+          if (item.taskType === 'custom' && item.taskId) {
+            const idx = customTasks.findIndex(ct => ct.id === item.taskId)
+            if (idx >= 0) { customTasks[idx] = { ...customTasks[idx], dueTime: bulkTime }; customChanged = true }
+          }
+        }
+        if (customChanged) updates.customTasks = customTasks
+        await saveCareSchedule({ ...existing, ...updates, updatedAt: new Date().toISOString() })
+      }
+      onSaved()
+    } finally { setSaving(false) }
+  }
+
+  const availableTypes = [...new Set(allItems.map(i => i.taskType))]
+  const allVisibleSel = visible.length > 0 && visible.every(i => selected.has(i.key))
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-gray-900 border-t border-gray-800 rounded-t-2xl flex flex-col max-h-[92vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-gray-100">Set Notification Times</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Pick a time, select tasks, tap Apply</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 p-1"><X size={20} /></button>
+        </div>
+
+        {/* Time picker */}
+        <div className="px-4 pb-3 shrink-0">
+          <input type="time" value={bulkTime} onChange={e => setBulkTime(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-xl text-gray-100 text-center font-semibold focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+
+        {/* Type filter chips */}
+        <div className="px-4 pb-2 flex gap-2 overflow-x-auto shrink-0 scrollbar-hide">
+          <button onClick={() => setFilter(null)}
+            className={cn('px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-colors',
+              !filter ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400')}>All</button>
+          {availableTypes.map(type => (
+            <button key={type} onClick={() => setFilter(f => f === type ? null : type)}
+              className={cn('px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-colors',
+                filter === type ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400')}>
+              {eventIcon[type] ?? '📋'} {BULK_TYPE_LABEL[type] ?? type}
+            </button>
+          ))}
+        </div>
+
+        {/* Select all */}
+        <div className="px-4 pb-2 flex items-center justify-between shrink-0">
+          <button onClick={toggleAll} className="text-xs font-semibold text-emerald-400">
+            {allVisibleSel ? 'Deselect All' : 'Select All'}
+          </button>
+          <span className="text-xs text-gray-500">{selected.size} selected</span>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-4 pb-2">
+          {BULK_TYPE_ORDER.filter(t => grouped.has(t)).map(type => {
+            const items = grouped.get(type)!
+            const allTypeSel = items.every(i => selected.has(i.key))
+            return (
+              <div key={type} className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    {eventIcon[type] ?? '📋'} {BULK_TYPE_LABEL[type] ?? type}
+                  </p>
+                  <button onClick={() => toggleType(type)} className="text-xs text-emerald-500 font-semibold">
+                    {allTypeSel ? 'Deselect' : 'Select all'}
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {items.map(item => {
+                    const isSel = selected.has(item.key)
+                    return (
+                      <button key={item.key} onClick={() => toggle(item.key)}
+                        className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left',
+                          isSel ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-gray-800 border-gray-700'
+                        )}>
+                        <div className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors',
+                          isSel ? 'border-emerald-500 bg-emerald-500' : 'border-gray-600'
+                        )}>
+                          {isSel && <Check size={11} className="text-white" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-200 truncate">{item.animalName}</p>
+                          {item.taskType === 'custom' && <p className="text-xs text-gray-500 truncate">{item.label}</p>}
+                        </div>
+                        {item.currentTime
+                          ? <span className="text-xs text-emerald-400 shrink-0">{fmt12(item.currentTime)}</span>
+                          : <span className="text-xs text-gray-600 shrink-0">no time</span>
+                        }
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Apply */}
+        <div className="px-4 py-3 border-t border-gray-800 shrink-0">
+          <button onClick={handleApply} disabled={saving || !bulkTime || selected.size === 0}
+            className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white font-bold text-sm rounded-xl transition-colors">
+            {saving ? 'Saving…'
+              : selected.size === 0 ? 'Select tasks above'
+              : !bulkTime ? 'Set a time above'
+              : `Apply ${fmt12(bulkTime)} to ${selected.size} task${selected.size !== 1 ? 's' : ''}`
+            }
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Tasks Page ────────────────────────────────────────────────────────────────
 
 export default function TasksPage() {
@@ -490,6 +699,7 @@ export default function TasksPage() {
   const [loggingId, setLoggingId] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTask, setEditTask] = useState<ScheduledTask | undefined>()
+  const [bulkTimeOpen, setBulkTimeOpen] = useState(false)
 
   const { from, to, label: rangeLabel } = useMemo(() => {
     if (view === 'day') {
@@ -566,11 +776,18 @@ export default function TasksPage() {
   return (
     <div className="min-h-full pb-24">
       {/* Header */}
-      <div className="px-4 pt-6 pb-3">
-        <h1 className="text-2xl font-bold text-gray-100">Tasks</h1>
-        {overdueCount > 0 && (
-          <p className="text-sm text-red-400 mt-0.5">{overdueCount} overdue · {todayCount} due today</p>
-        )}
+      <div className="px-4 pt-6 pb-3 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100">Tasks</h1>
+          {overdueCount > 0 && (
+            <p className="text-sm text-red-400 mt-0.5">{overdueCount} overdue · {todayCount} due today</p>
+          )}
+        </div>
+        <button onClick={() => setBulkTimeOpen(true)}
+          className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded-xl transition-colors mt-1"
+          title="Set notification times">
+          <Clock size={20} />
+        </button>
       </div>
 
       {/* View toggle */}
@@ -709,6 +926,15 @@ export default function TasksPage() {
           editTask={editTask}
           onClose={closeSheet}
           onSaved={onSaved}
+        />
+      )}
+
+      {bulkTimeOpen && (
+        <BulkTimeSheet
+          animals={animals}
+          schedules={schedules}
+          onClose={() => setBulkTimeOpen(false)}
+          onSaved={() => { setBulkTimeOpen(false); refetch() }}
         />
       )}
     </div>
