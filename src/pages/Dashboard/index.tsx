@@ -305,7 +305,7 @@ export default function Dashboard() {
             {(plants ?? []).map(p => {
               const due = isWateringDue(p)
               return (
-                <button key={p.id} onClick={() => navigate('/plants')}
+                <button key={p.id} onClick={() => navigate(`/plants/${p.id}`)}
                   className="flex flex-col items-center gap-1.5 shrink-0 group">
                   <div className={cn('relative w-16 h-16 rounded-full bg-gray-800 border-2 transition-colors flex items-center justify-center text-2xl overflow-hidden',
                     due ? 'border-blue-500/60' : 'border-gray-700 group-hover:border-green-600/60'
