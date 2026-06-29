@@ -66,6 +66,11 @@ export interface AnimalCareSchedule {
   substrateCleanIntervalDays: number;
   substrateChangeIntervalDays?: number;
   scheduleStartDate?: string;
+  feedingTime?: string;
+  mistingTime?: string;
+  wateringTime?: string;
+  substrateCleanTime?: string;
+  substrateChangeTime?: string;
   medicationReminders: boolean;
   additives?: string[];
   quietHoursStart?: string;

@@ -100,28 +100,28 @@ function useAllScheduledTasks(from: Date, to: Date) {
         animalEvents.filter(e => e.type === type).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]
 
       const start = schedule.scheduleStartDate
-      const intervals: { type: CareEventType; label: string; intervalDays: number; anchor: string | undefined }[] = []
+      const intervals: { type: CareEventType; label: string; intervalDays: number; anchor: string | undefined; dueTime?: string }[] = []
 
       if (schedule.feedingIntervalDays)
-        intervals.push({ type: 'feeding', label: 'Feeding', intervalDays: schedule.feedingIntervalDays, anchor: lastOf('feeding')?.occurredAt ?? start })
+        intervals.push({ type: 'feeding', label: 'Feeding', intervalDays: schedule.feedingIntervalDays, anchor: lastOf('feeding')?.occurredAt ?? start, dueTime: schedule.feedingTime })
       if (schedule.substrateCleanIntervalDays)
         intervals.push({ type: 'substrate_clean', label: 'Substrate Clean', intervalDays: schedule.substrateCleanIntervalDays,
-          anchor: animalEvents.filter(e => e.type === 'substrate_clean' || e.type === 'full_clean').sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]?.occurredAt ?? start })
+          anchor: animalEvents.filter(e => e.type === 'substrate_clean' || e.type === 'full_clean').sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]?.occurredAt ?? start, dueTime: schedule.substrateCleanTime })
       if (schedule.substrateChangeIntervalDays)
-        intervals.push({ type: 'substrate_change', label: 'Substrate Change', intervalDays: schedule.substrateChangeIntervalDays, anchor: lastOf('substrate_change')?.occurredAt ?? start })
+        intervals.push({ type: 'substrate_change', label: 'Substrate Change', intervalDays: schedule.substrateChangeIntervalDays, anchor: lastOf('substrate_change')?.occurredAt ?? start, dueTime: schedule.substrateChangeTime })
       if (schedule.mistingIntervalHours)
-        intervals.push({ type: 'misting', label: 'Misting', intervalDays: schedule.mistingIntervalHours / 24, anchor: lastOf('misting')?.occurredAt ?? start })
+        intervals.push({ type: 'misting', label: 'Misting', intervalDays: schedule.mistingIntervalHours / 24, anchor: lastOf('misting')?.occurredAt ?? start, dueTime: schedule.mistingTime })
       if (schedule.waterChangeIntervalDays)
-        intervals.push({ type: 'watering', label: 'Water Change', intervalDays: schedule.waterChangeIntervalDays, anchor: lastOf('watering')?.occurredAt ?? start })
+        intervals.push({ type: 'watering', label: 'Water Change', intervalDays: schedule.waterChangeIntervalDays, anchor: lastOf('watering')?.occurredAt ?? start, dueTime: schedule.wateringTime })
 
-      for (const { type, label, intervalDays, anchor } of intervals) {
+      for (const { type, label, intervalDays, anchor, dueTime } of intervals) {
         if (!anchor) continue
         let due = nextDueDate(anchor, intervalDays)
         let iterations = 0
         while (due.getTime() <= toMs && iterations++ < 60) {
           if (due.getTime() >= fromMs - 86400000) {
             const doneToday = animalEvents.some(e => e.type === type && isSameDay(new Date(e.occurredAt), due))
-            result.push({ id: `${animal.id}-${type}-${due.getTime()}`, animalId: animal.id, animalName: animal.name, species: animal.species, type, label, dueAt: new Date(due), done: doneToday })
+            result.push({ id: `${animal.id}-${type}-${due.getTime()}`, animalId: animal.id, animalName: animal.name, species: animal.species, type, label, dueAt: new Date(due), done: doneToday, dueTime })
           }
           due = nextDueDate(due.toISOString(), intervalDays)
         }
@@ -270,7 +270,18 @@ function TaskSheet({ animals, schedules, editTask, onClose, onSaved }: TaskSheet
     editTask ? (editTask.type === 'custom_task' ? 'custom' : editTask.type as BuiltinType) : 'feeding'
   )
   const [customName, setCustomName] = useState(isCustomEdit ? editTask!.label : '')
-  const [dueTime, setDueTime] = useState(editTask?.dueTime ?? '')
+  const [dueTime, setDueTime] = useState(() => {
+    if (!editTask) return ''
+    if (editTask.type === 'custom_task') return editTask.dueTime ?? ''
+    const s = schedules.find(s => s.animalId === editTask.animalId)
+    if (!s) return ''
+    if (editTask.type === 'feeding')          return s.feedingTime ?? ''
+    if (editTask.type === 'misting')          return s.mistingTime ?? ''
+    if (editTask.type === 'watering')         return s.wateringTime ?? ''
+    if (editTask.type === 'substrate_clean')  return s.substrateCleanTime ?? ''
+    if (editTask.type === 'substrate_change') return s.substrateChangeTime ?? ''
+    return ''
+  })
   const [intervalVal, setIntervalVal] = useState(() => {
     if (!editTask) return ''
     const s = schedules.find(s => s.animalId === editTask.animalId)
@@ -329,11 +340,12 @@ function TaskSheet({ animals, schedules, editTask, onClose, onSaved }: TaskSheet
         await saveCareSchedule({ ...base, customTasks })
       } else {
         const updates: Partial<AnimalCareSchedule> = { scheduleStartDate: new Date(startDate).toISOString() }
-        if (taskType === 'feeding')          updates.feedingIntervalDays = n
-        if (taskType === 'misting')          { updates.mistingInterval = n; updates.mistingIntervalUnit = intervalUnit as 'hours' | 'days'; updates.mistingIntervalHours = intervalUnit === 'hours' ? n : n * 24 }
-        if (taskType === 'watering')         updates.waterChangeIntervalDays = n
-        if (taskType === 'substrate_clean')  updates.substrateCleanIntervalDays = n
-        if (taskType === 'substrate_change') updates.substrateChangeIntervalDays = n
+        const t = dueTime || undefined
+        if (taskType === 'feeding')          { updates.feedingIntervalDays = n; updates.feedingTime = t }
+        if (taskType === 'misting')          { updates.mistingInterval = n; updates.mistingIntervalUnit = intervalUnit as 'hours' | 'days'; updates.mistingIntervalHours = intervalUnit === 'hours' ? n : n * 24; updates.mistingTime = t }
+        if (taskType === 'watering')         { updates.waterChangeIntervalDays = n; updates.wateringTime = t }
+        if (taskType === 'substrate_clean')  { updates.substrateCleanIntervalDays = n; updates.substrateCleanTime = t }
+        if (taskType === 'substrate_change') { updates.substrateChangeIntervalDays = n; updates.substrateChangeTime = t }
         await saveCareSchedule({ ...base, ...updates })
       }
       onSaved()
@@ -349,7 +361,7 @@ function TaskSheet({ animals, schedules, editTask, onClose, onSaved }: TaskSheet
         ? [{ value: 'hours', label: 'hours' }, { value: 'days', label: 'days' }, { value: 'weeks', label: 'weeks' }, { value: 'months', label: 'months' }]
         : []
 
-  const showTimeField = taskType === 'custom' || isCustomEdit
+  const showTimeField = true
 
   return (
     <>
@@ -420,7 +432,7 @@ function TaskSheet({ animals, schedules, editTask, onClose, onSaved }: TaskSheet
           {showTimeField && (
             <div>
               <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1">Time of Day</label>
-              <p className="text-xs text-gray-600 mb-1.5">Optional. Sets when notifications fire and shows on task cards.</p>
+              <p className="text-xs text-gray-600 mb-1.5">Optional. Notifications fire at this time (e.g. 21:00 for 9 PM). Shown on task cards.</p>
               <input
                 type="time"
                 value={dueTime}

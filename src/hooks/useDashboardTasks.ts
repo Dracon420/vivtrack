@@ -15,6 +15,7 @@ export interface DashboardTask {
   label: string
   dueAt: Date
   urgency: 'overdue' | 'today' | 'soon' | 'ok'
+  dueTime?: string
 }
 
 let ch = 0
@@ -57,7 +58,7 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
         if (anchor) {
           const due = nextDueDate(anchor, schedule.feedingIntervalDays)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-feeding`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'feeding', label: 'Feeding', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-feeding`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'feeding', label: 'Feeding', dueAt: due, urgency, dueTime: schedule.feedingTime })
         }
       }
 
@@ -66,7 +67,7 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
         if (anchor) {
           const due = nextDueDate(anchor, schedule.substrateCleanIntervalDays)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-clean`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_clean', label: 'Substrate Clean', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-clean`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_clean', label: 'Substrate Clean', dueAt: due, urgency, dueTime: schedule.substrateCleanTime })
         }
       }
 
@@ -75,7 +76,7 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
         if (anchor) {
           const due = nextDueDate(anchor, schedule.substrateChangeIntervalDays)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-substrate-change`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_change', label: 'Substrate Change', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-substrate-change`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'substrate_change', label: 'Substrate Change', dueAt: due, urgency, dueTime: schedule.substrateChangeTime })
         }
       }
 
@@ -84,7 +85,7 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
         if (anchor) {
           const due = nextDueDate(anchor, schedule.mistingIntervalHours / 24)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-misting`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'misting', label: 'Misting', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-misting`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'misting', label: 'Misting', dueAt: due, urgency, dueTime: schedule.mistingTime })
         }
       }
 
@@ -93,7 +94,7 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
         if (anchor) {
           const due = nextDueDate(anchor, schedule.waterChangeIntervalDays)
           const urgency = urgencyLevel(due)
-          if (urgency !== 'ok') result.push({ id: `${animal.id}-watering`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'watering', label: 'Water Change', dueAt: due, urgency })
+          if (urgency !== 'ok') result.push({ id: `${animal.id}-watering`, animalId: animal.id, animalName: animal.name, species: animal.species, type: 'watering', label: 'Water Change', dueAt: due, urgency, dueTime: schedule.wateringTime })
         }
       }
     }
