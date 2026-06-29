@@ -4,8 +4,20 @@ import { useUIStore } from '@/store/uiStore'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/contexts/AuthContext'
 import { requestNotificationPermission, currentPermission } from '@/utils/notifications'
+import { subscribeToPush, unsubscribeFromPush } from '@/utils/webPush'
 import { useUserPreferences } from '@/db/hooks/useUserPreferences'
 import { cn } from '@/lib/utils'
+
+const DIGEST_TIMEZONES = [
+  { label: 'Pacific Time (PT)',   value: 'America/Los_Angeles' },
+  { label: 'Mountain Time (MT)',  value: 'America/Denver' },
+  { label: 'Arizona (no DST)',    value: 'America/Phoenix' },
+  { label: 'Central Time (CT)',   value: 'America/Chicago' },
+  { label: 'Eastern Time (ET)',   value: 'America/New_York' },
+  { label: 'Alaska Time (AKT)',   value: 'America/Anchorage' },
+  { label: 'Hawaii Time (HT)',    value: 'Pacific/Honolulu' },
+  { label: 'UTC',                 value: 'UTC' },
+]
 
 const LEAD_OPTIONS = [
   { minutes: 0,    label: 'At the time' },
@@ -29,13 +41,19 @@ export default function Settings() {
   const [permStatus, setPermStatus] = useState<NotificationPermission>(currentPermission())
 
   const handleEnableNotifications = async () => {
-    if (permStatus === 'denied') return // browser blocked; user must change in system settings
+    if (permStatus === 'denied') return
     if (permStatus !== 'granted') {
       const result = await requestNotificationPermission()
       setPermStatus(result)
       if (result !== 'granted') return
     }
-    setNotificationsEnabled(!notificationsEnabled)
+    const enabling = !notificationsEnabled
+    setNotificationsEnabled(enabling)
+    if (enabling && user) {
+      await subscribeToPush(user.id)
+    } else if (!enabling && user) {
+      await unsubscribeFromPush(user.id)
+    }
   }
 
   const themes = [
@@ -196,7 +214,10 @@ export default function Settings() {
                     {LEAD_OPTIONS.map(opt => (
                       <button
                         key={opt.minutes}
-                        onClick={() => setNotificationLeadMinutes(opt.minutes)}
+                        onClick={() => {
+                          setNotificationLeadMinutes(opt.minutes)
+                          savePrefs({ notificationLeadMinutes: opt.minutes })
+                        }}
                         className={cn(
                           'py-2 rounded-xl border text-xs font-semibold transition-colors text-center',
                           notificationLeadMinutes === opt.minutes
@@ -209,7 +230,7 @@ export default function Settings() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-600 mt-2.5 leading-relaxed">
-                    Notifications fire while the app is open or running in the background. For overnight reminders, keep the app running on your device.
+                    Push notifications work even when the app is closed — install VivTrack to your home screen for best results on iOS.
                   </p>
                 </div>
               )}
@@ -228,7 +249,7 @@ export default function Settings() {
             <div className="flex-1">
               <p className="text-sm text-gray-200 font-medium">Morning summary</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                One email per day at 8:00 AM UTC listing overdue, today's, and tomorrow's tasks.
+                One email per day at 8:00 AM in your selected timezone.
               </p>
             </div>
             <button
@@ -246,16 +267,28 @@ export default function Settings() {
           </div>
 
           {prefs.emailDigestEnabled && user?.email && (
-            <div className="bg-gray-800 rounded-xl px-3 py-2.5">
+            <div className="bg-gray-800 rounded-xl px-3 py-2.5 mb-3">
               <p className="text-xs text-gray-500">Sending to</p>
               <p className="text-sm text-gray-300 font-medium mt-0.5 truncate">{user.email}</p>
             </div>
           )}
 
           {prefs.emailDigestEnabled && (
-            <p className="text-xs text-gray-600 mt-2.5 leading-relaxed">
-              Digest skips days with no tasks. Requires the <strong className="text-gray-500">BREVO_API_KEY</strong> secret set in your Supabase project.
-            </p>
+            <>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Your Timezone</p>
+              <select
+                value={prefs.digestTimezone ?? 'America/Los_Angeles'}
+                onChange={e => savePrefs({ digestTimezone: e.target.value })}
+                className="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none mb-2.5"
+              >
+                {DIGEST_TIMEZONES.map(tz => (
+                  <option key={tz.value} value={tz.value}>{tz.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Email sends at 8:00 AM in your timezone. Skips days with no tasks.
+              </p>
+            </>
           )}
         </div>
 

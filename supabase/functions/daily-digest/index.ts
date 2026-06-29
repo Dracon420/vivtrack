@@ -31,13 +31,13 @@ function isSameDay(a: Date, b: Date): boolean {
   return startOfDay(a).getTime() === startOfDay(b).getTime()
 }
 
-const now = new Date()
-const today = startOfDay(now)
-const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
-
-function isOverdue(d: Date): boolean  { return startOfDay(d) < today }
-function isToday(d: Date): boolean    { return isSameDay(d, today) }
-function isTomorrow(d: Date): boolean { return isSameDay(d, tomorrow) }
+function isDigestHour(timezone: string): boolean {
+  const hour = parseInt(
+    new Intl.DateTimeFormat('en', { timeZone: timezone, hour: 'numeric', hour12: false }).format(new Date()),
+    10
+  )
+  return hour === 8
+}
 
 const EMOJI: Record<string, string> = {
   feeding: '🍖', watering: '🫙', misting: '💧',
@@ -52,7 +52,13 @@ function computeTasks(
   animals: any[],
   schedules: any[],
   events: any[],
+  today: Date,
+  tomorrow: Date,
 ): { overdue: Task[]; today: Task[]; tomorrow: Task[] } {
+  const isOverdue = (d: Date) => startOfDay(d) < today
+  const isToday   = (d: Date) => isSameDay(d, today)
+  const isTomorrow = (d: Date) => isSameDay(d, tomorrow)
+
   const overdue: Task[] = []
   const todayList: Task[] = []
   const tomorrowList: Task[] = []
@@ -135,7 +141,7 @@ function section(title: string, color: string, tasks: Task[]): string {
   </div>`
 }
 
-function buildEmail(tasks: { overdue: Task[]; today: Task[]; tomorrow: Task[] }, userEmail: string): { html: string; text: string; subject: string } {
+function buildEmail(tasks: { overdue: Task[]; today: Task[]; tomorrow: Task[] }, userEmail: string, todayLocal: Date): { html: string; text: string; subject: string } {
   const total = tasks.overdue.length + tasks.today.length
   const subject = tasks.overdue.length > 0
     ? `🚨 ${tasks.overdue.length} overdue + ${tasks.today.length} due today — VivTrack`
@@ -153,7 +159,7 @@ function buildEmail(tasks: { overdue: Task[]; today: Task[]; tomorrow: Task[] },
         <tr><td style="background:#111827;border-radius:16px 16px 0 0;padding:28px 32px;">
           <span style="color:#10b981;font-size:22px;font-weight:800;letter-spacing:-0.5px;">VivTrack</span>
           <p style="margin:6px 0 0;color:#9ca3af;font-size:13px;">
-            Daily care summary &nbsp;·&nbsp; ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            Daily care summary &nbsp;·&nbsp; ${todayLocal.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </td></tr>
 
@@ -232,9 +238,19 @@ Deno.serve(async (_req) => {
 
     for (const pref of enabledPrefs) {
       try {
+        const timezone = (pref.data as any)?.digestTimezone ?? 'America/Los_Angeles'
+
+        // Only send if it's 8 AM in the user's timezone
+        if (!isDigestHour(timezone)) continue
+
         // Resolve user email from auth
         const { data: { user }, error: userErr } = await supabase.auth.admin.getUserById(pref.user_id)
         if (userErr || !user?.email) continue
+
+        // Compute today/tomorrow in the user's local timezone
+        const nowLocal = new Date(new Date().toLocaleString('en', { timeZone: timezone }))
+        const todayLocal = startOfDay(nowLocal)
+        const tomorrowLocal = new Date(todayLocal); tomorrowLocal.setDate(tomorrowLocal.getDate() + 1)
 
         // Fetch user data
         const [animalsRes, schedulesRes, eventsRes] = await Promise.all([
@@ -248,7 +264,7 @@ Deno.serve(async (_req) => {
         const schedules = (schedulesRes.data ?? []).map((r: any) => r.data)
         const events    = (eventsRes.data ?? []).map((r: any) => r.data)
 
-        const tasks = computeTasks(animals, schedules, events)
+        const tasks = computeTasks(animals, schedules, events, todayLocal, tomorrowLocal)
 
         // Only send if there's something to report
         const hasContent = tasks.overdue.length + tasks.today.length + tasks.tomorrow.length > 0
@@ -257,7 +273,7 @@ Deno.serve(async (_req) => {
           continue
         }
 
-        const { html, text, subject } = buildEmail(tasks, user.email)
+        const { html, text, subject } = buildEmail(tasks, user.email, todayLocal)
         await sendEmail(user.email, subject, html, text)
         results.push({ email: user.email, sent: true })
       } catch (err: any) {

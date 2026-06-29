@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext'
 
 export interface UserPreferences {
   emailDigestEnabled?: boolean
+  notificationLeadMinutes?: number
+  digestTimezone?: string
 }
 
 export function useUserPreferences() {

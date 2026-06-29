@@ -9,6 +9,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/**', 'data/species.json'],
       manifest: {
@@ -31,22 +34,8 @@ export default defineConfig({
           { name: 'Scan Enclosure', url: '/scanner' },
         ],
       },
-      workbox: {
-        cleanupOutdatedCaches: true,
-        skipWaiting: true,
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        runtimeCaching: [
-          {
-            urlPattern: /\/data\/species\.json/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'species-data',
-              expiration: { maxEntries: 1, maxAgeSeconds: 31536000 },
-            },
-          },
-        ],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/__/],
       },
       devOptions: { enabled: false },
     }),
