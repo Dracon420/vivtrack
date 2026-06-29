@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User, Thermometer, Ruler, Bell, BellOff } from 'lucide-react'
+import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User, Thermometer, Ruler, Bell, BellOff, Mail } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/contexts/AuthContext'
 import { requestNotificationPermission, currentPermission } from '@/utils/notifications'
+import { useUserPreferences } from '@/db/hooks/useUserPreferences'
 import { cn } from '@/lib/utils'
 
 const LEAD_OPTIONS = [
@@ -24,6 +25,7 @@ export default function Settings() {
     notificationLeadMinutes, setNotificationLeadMinutes,
   } = useUIStore()
   const { user, signOut } = useAuth()
+  const { prefs, save: savePrefs } = useUserPreferences()
   const [permStatus, setPermStatus] = useState<NotificationPermission>(currentPermission())
 
   const handleEnableNotifications = async () => {
@@ -212,6 +214,48 @@ export default function Settings() {
                 </div>
               )}
             </>
+          )}
+        </div>
+
+        {/* Email Digest */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Mail size={16} className="text-gray-500" />
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Daily Email Digest</p>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex-1">
+              <p className="text-sm text-gray-200 font-medium">Morning summary</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                One email per day at 8:00 AM UTC listing overdue, today's, and tomorrow's tasks.
+              </p>
+            </div>
+            <button
+              onClick={() => savePrefs({ emailDigestEnabled: !prefs.emailDigestEnabled })}
+              className={cn(
+                'relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5',
+                prefs.emailDigestEnabled ? 'bg-emerald-500' : 'bg-gray-700'
+              )}
+            >
+              <span className={cn(
+                'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                prefs.emailDigestEnabled ? 'translate-x-5' : 'translate-x-0'
+              )} />
+            </button>
+          </div>
+
+          {prefs.emailDigestEnabled && user?.email && (
+            <div className="bg-gray-800 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-gray-500">Sending to</p>
+              <p className="text-sm text-gray-300 font-medium mt-0.5 truncate">{user.email}</p>
+            </div>
+          )}
+
+          {prefs.emailDigestEnabled && (
+            <p className="text-xs text-gray-600 mt-2.5 leading-relaxed">
+              Digest skips days with no tasks. Requires the <strong className="text-gray-500">BREVO_API_KEY</strong> secret set in your Supabase project.
+            </p>
           )}
         </div>
 
