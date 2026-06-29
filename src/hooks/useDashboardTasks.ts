@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useUIStore } from '@/store/uiStore'
 import { nextDueDate, urgencyLevel } from '@/utils/dateHelpers'
+import { scheduleTaskNotifications } from '@/utils/notifications'
 import type { Animal, AnimalCareSchedule, CareEvent, FeederColony, CareEventType } from '@/types'
 
 export interface DashboardTask {
@@ -19,6 +21,7 @@ let ch = 0
 
 export function useDashboardTasks(): DashboardTask[] | undefined {
   const { user } = useAuth()
+  const { notificationsEnabled, notificationLeadMinutes } = useUIStore()
   const [tasks, setTasks] = useState<DashboardTask[] | undefined>()
 
   const compute = useCallback(async () => {
@@ -104,6 +107,13 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
     const order = { overdue: 0, today: 1, soon: 2, ok: 3 }
     setTasks(result.sort((a, b) => order[a.urgency] - order[b.urgency] || a.dueAt.getTime() - b.dueAt.getTime()))
   }, [user?.id])
+
+  // Schedule push notifications whenever tasks or notification settings change
+  useEffect(() => {
+    if (tasks && notificationsEnabled) {
+      scheduleTaskNotifications(tasks, notificationLeadMinutes)
+    }
+  }, [tasks, notificationsEnabled, notificationLeadMinutes])
 
   useEffect(() => {
     compute()

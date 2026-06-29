@@ -45,6 +45,7 @@ export interface CustomTask {
   intervalValue: number;
   intervalUnit: 'hours' | 'days' | 'weeks' | 'months';
   startDate?: string;
+  dueTime?: string; // "HH:mm" — preferred time of day for this task
 }
 
 export interface AnimalCareSchedule {

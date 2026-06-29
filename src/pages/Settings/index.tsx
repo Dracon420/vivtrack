@@ -1,14 +1,40 @@
 import { useState } from 'react'
-import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User, Thermometer, Ruler } from 'lucide-react'
+import { Sun, Moon, Monitor, Scale, DollarSign, Info, LogOut, User, Thermometer, Ruler, Bell, BellOff } from 'lucide-react'
 import { useUIStore } from '@/store/uiStore'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/contexts/AuthContext'
+import { requestNotificationPermission, currentPermission } from '@/utils/notifications'
 import { cn } from '@/lib/utils'
+
+const LEAD_OPTIONS = [
+  { minutes: 0,    label: 'At the time' },
+  { minutes: 15,   label: '15 min before' },
+  { minutes: 30,   label: '30 min before' },
+  { minutes: 60,   label: '1 hour before' },
+  { minutes: 120,  label: '2 hours before' },
+  { minutes: 1440, label: '1 day before' },
+]
 
 export default function Settings() {
   const { theme, setTheme } = useTheme()
-  const { weightUnit, setWeightUnit, currency, setCurrency, tempUnit, setTempUnit, measurementUnit, setMeasurementUnit } = useUIStore()
+  const {
+    weightUnit, setWeightUnit, currency, setCurrency,
+    tempUnit, setTempUnit, measurementUnit, setMeasurementUnit,
+    notificationsEnabled, setNotificationsEnabled,
+    notificationLeadMinutes, setNotificationLeadMinutes,
+  } = useUIStore()
   const { user, signOut } = useAuth()
+  const [permStatus, setPermStatus] = useState<NotificationPermission>(currentPermission())
+
+  const handleEnableNotifications = async () => {
+    if (permStatus === 'denied') return // browser blocked; user must change in system settings
+    if (permStatus !== 'granted') {
+      const result = await requestNotificationPermission()
+      setPermStatus(result)
+      if (result !== 'granted') return
+    }
+    setNotificationsEnabled(!notificationsEnabled)
+  }
 
   const themes = [
     { key: 'dark' as const, label: 'Dark', icon: <Moon size={16} /> },
@@ -124,6 +150,69 @@ export default function Settings() {
             <option value="AUD">AUD — Australian Dollar</option>
             <option value="NZD">NZD — New Zealand Dollar</option>
           </select>
+        </div>
+
+        {/* Notifications */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Bell size={16} className="text-gray-500" />
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Notifications</p>
+          </div>
+
+          {permStatus === 'denied' ? (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 leading-relaxed">
+              <BellOff size={14} className="inline mr-1.5 mb-0.5" />
+              Notifications are blocked in your browser. Open your browser or OS settings and allow notifications for this site, then return here.
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm text-gray-200 font-medium">Task reminders</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {permStatus === 'granted' ? 'Browser notifications active' : 'Tap to grant permission'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleEnableNotifications}
+                  className={cn(
+                    'relative w-11 h-6 rounded-full transition-colors shrink-0',
+                    notificationsEnabled && permStatus === 'granted' ? 'bg-emerald-500' : 'bg-gray-700'
+                  )}
+                >
+                  <span className={cn(
+                    'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                    notificationsEnabled && permStatus === 'granted' ? 'translate-x-5' : 'translate-x-0'
+                  )} />
+                </button>
+              </div>
+
+              {notificationsEnabled && permStatus === 'granted' && (
+                <div>
+                  <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-2">Remind me</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {LEAD_OPTIONS.map(opt => (
+                      <button
+                        key={opt.minutes}
+                        onClick={() => setNotificationLeadMinutes(opt.minutes)}
+                        className={cn(
+                          'py-2 rounded-xl border text-xs font-semibold transition-colors text-center',
+                          notificationLeadMinutes === opt.minutes
+                            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300'
+                            : 'border-gray-700 bg-gray-800 text-gray-500 hover:bg-gray-700'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2.5 leading-relaxed">
+                    Notifications fire while the app is open or running in the background. For overnight reminders, keep the app running on your device.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* About */}
