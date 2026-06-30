@@ -644,7 +644,14 @@ export default function AnimalProfile() {
   const events = useCareEvents(id, 30)
   const [activeTab, setActiveTab] = useState<Tab>('overview')
 
-  const handleDeleteEvent = async (eventId: string) => { await deleteCareEvent(eventId) }
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteCareEvent(eventId)
+    } catch (err) {
+      console.error('Failed to delete care event:', err)
+      alert('Could not delete this event. Please try again.')
+    }
+  }
 
   if (!animal) return (
     <div className="flex items-center justify-center h-40">

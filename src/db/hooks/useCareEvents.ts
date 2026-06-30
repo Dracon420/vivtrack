@@ -116,5 +116,6 @@ export async function addCareEvent(data: Omit<CareEvent, 'id' | 'createdAt'>) {
 }
 
 export async function deleteCareEvent(id: string) {
-  await supabase.from('care_events').delete().eq('id', id)
+  const { error } = await supabase.from('care_events').delete().eq('id', id)
+  if (error) throw error
 }
