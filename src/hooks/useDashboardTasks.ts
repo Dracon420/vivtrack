@@ -20,6 +20,12 @@ export interface DashboardTask {
 
 let ch = 0
 
+const refreshListeners = new Set<() => void>()
+
+export function refreshDashboardTasks() {
+  refreshListeners.forEach(fn => fn())
+}
+
 export function useDashboardTasks(): DashboardTask[] | undefined {
   const { user } = useAuth()
   const { notificationsEnabled, notificationLeadMinutes } = useUIStore()
@@ -117,12 +123,16 @@ export function useDashboardTasks(): DashboardTask[] | undefined {
   }, [tasks, notificationsEnabled, notificationLeadMinutes])
 
   useEffect(() => {
+    refreshListeners.add(compute)
+    return () => { refreshListeners.delete(compute) }
+  }, [compute])
+
+  useEffect(() => {
     compute()
     const n = ++ch
-    const delayedCompute = () => setTimeout(compute, 600)
     const channel = supabase.channel(`dashboard_${n}`)
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'animals' }, compute)
-      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'care_events' }, delayedCompute)
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'care_events' }, compute)
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'animal_care_schedules' }, compute)
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'feeder_colonies' }, compute)
       .subscribe()

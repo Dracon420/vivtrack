@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { addCareEvent } from '@/db/hooks/useCareEvents'
 import { saveCareSchedule } from '@/db/hooks/useAnimals'
-import { useDashboardTasks } from '@/hooks/useDashboardTasks'
+import { useDashboardTasks, refreshDashboardTasks } from '@/hooks/useDashboardTasks'
 import { nextDueDate } from '@/utils/dateHelpers'
 import { cn } from '@/lib/utils'
 import { v4 as uuidv4 } from 'uuid'
@@ -760,6 +760,7 @@ export default function TasksPage() {
         ...(task.type === 'custom_task' && task.customTask ? { customTaskId: task.customTask.id } : {}),
       })
       refetch()
+      refreshDashboardTasks()
     } finally { setSkippingId(null) }
   }
 
