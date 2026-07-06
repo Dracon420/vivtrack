@@ -1697,5 +1697,74 @@
     "brumationMonths": [11, 3],
     "commonHealthIssues": ["koi herpesvirus", "ich", "anchor worm", "dropsy", "bacterial ulcers"],
     "specialNotes": ["Pond fish — require very large water volume", "pH 7.0–7.6", "Heavy bioload — large filter essential", "Can live 30+ years", "Highly personable and will hand-feed"]
+  },
+  {
+    "id": "murrays-huntsman",
+    "commonName": "Murray's Huntsman Spider",
+    "scientificName": "Holconia murrayensis",
+    "alternateNames": ["Murray River Huntsman", "Banded Huntsman"],
+    "animalClass": "invertebrate",
+    "order": "spider",
+    "careLevel": "advanced",
+    "lifespanYears": [5, 8],
+    "adultSizeCm": [14, 18],
+    "adultWeightGrams": [3, 10],
+    "temperature": { "coolSideCelsius": [20, 24], "warmSideCelsius": [24, 28] },
+    "humidity": { "min": 50, "max": 70, "mistingFrequency": "2–3x per week, one corner of enclosure" },
+    "lighting": { "uvbRequired": false, "photoperiodHours": 12, "seasonalVariation": true, "basking": false },
+    "enclosure": { "minimumSizeCm": [45, 30, 30], "preferredStyle": "terrestrial", "ventilation": "full_screen" },
+    "substrateOptions": [
+      { "type": "coconut_fiber", "notes": "5–8cm depth" },
+      { "type": "topsoil" }
+    ],
+    "feeding": { "itemsTypical": ["crickets", "dubia roaches", "cockroaches", "mealworms"], "frequencyDays": 5, "feedingNotes": "Active hunter — remove uneaten prey within 24 hours; may fast before molt" },
+    "wateringNeeds": "bowl_always",
+    "handlingTemperament": "defensive",
+    "brumationCapable": false,
+    "commonHealthIssues": ["dehydration", "mites", "failed molt", "bite wound infection from prey"],
+    "specialNotes": [
+      "Huntsman spider (family Sparassidae) — not a tarantula; much faster and more agile",
+      "Flat-bodied ambush hunter — must provide cork bark slabs, flat wood, or hollow tubes as hides",
+      "Legspan up to 18cm — one of the largest huntsman species in southeastern Australia",
+      "Extremely fast and prone to bolting; full cross-ventilation enclosure essential — mesh lid and sides",
+      "Bite can cause local pain, swelling, and nausea; not life-threatening but handling not recommended",
+      "Nocturnal — most active after lights out",
+      "Females (5–8 yr) live significantly longer than males (2–3 yr)",
+      "Native to the Murray-Darling Basin region of southeastern Australia"
+    ]
+  },
+  {
+    "id": "thrixopelma-pruriens",
+    "commonName": "Peruvian Green Velvet Tarantula",
+    "scientificName": "Thrixopelma pruriens",
+    "alternateNames": ["Ewok Tarantula", "Peruvian Velvet Tarantula"],
+    "animalClass": "invertebrate",
+    "order": "tarantula",
+    "careLevel": "intermediate",
+    "lifespanYears": [15, 20],
+    "adultSizeCm": [13, 15],
+    "adultWeightGrams": [15, 35],
+    "temperature": { "coolSideCelsius": [18, 21], "warmSideCelsius": [21, 24] },
+    "humidity": { "min": 70, "max": 85, "mistingFrequency": "mist one side 2–3x per week; keep substrate lightly moist" },
+    "lighting": { "uvbRequired": false, "photoperiodHours": 12, "seasonalVariation": false, "basking": false },
+    "enclosure": { "minimumSizeCm": [30, 30, 30], "preferredStyle": "fossorial", "ventilation": "top" },
+    "substrateOptions": [
+      { "type": "coconut_fiber", "notes": "15–20cm depth for burrowing" },
+      { "type": "topsoil", "notes": "Mix with peat 3:1 to retain moisture" }
+    ],
+    "feeding": { "itemsTypical": ["crickets", "dubia roaches", "mealworms"], "frequencyDays": 10, "feedingNotes": "Remove uneaten prey after 24 hours; fasting before and after molt is normal" },
+    "wateringNeeds": "bowl_always",
+    "handlingTemperament": "defensive",
+    "brumationCapable": false,
+    "commonHealthIssues": ["dehydration", "mites", "failed molt from low humidity", "urticating hair irritation to keeper"],
+    "specialNotes": [
+      "Native to Andean cloud forests in Peru at 1500–2500m elevation — cooler temps than most tarantulas are essential",
+      "Dense olive-green velvety coat gives the 'Ewok' hobby nickname",
+      "Type I urticating hairs are notably irritating — avoid touching face after handling; wash hands thoroughly",
+      "Strong burrower — provide deep moist substrate and a starter burrow (cork tube or angled cork bark)",
+      "Slow grower; females can live 15–20+ years",
+      "Males mature at 3–4 years and live only 2–3 years beyond maturity",
+      "Keep substrate lightly moist throughout — this species does not tolerate dry conditions well"
+    ]
   }
 ]

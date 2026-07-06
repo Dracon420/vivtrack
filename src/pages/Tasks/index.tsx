@@ -697,6 +697,7 @@ export default function TasksPage() {
   const [anchor, setAnchor] = useState(new Date())
   const dashboardTasks = useDashboardTasks()
   const [loggingId, setLoggingId] = useState<string | null>(null)
+  const [skippingId, setSkippingId] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editTask, setEditTask] = useState<ScheduledTask | undefined>()
   const [bulkTimeOpen, setBulkTimeOpen] = useState(false)
@@ -745,6 +746,21 @@ export default function TasksPage() {
       return
     }
     navigate(`/animals/${task.animalId}/log?type=${task.type}`)
+  }
+
+  const handleSkip = async (task: ScheduledTask) => {
+    if (!task.animalId || skippingId === task.id) return
+    setSkippingId(task.id)
+    try {
+      await addCareEvent({
+        animalId: task.animalId,
+        type: task.type as CareEventType,
+        occurredAt: new Date().toISOString(),
+        notes: 'Skipped',
+        ...(task.type === 'custom_task' && task.customTask ? { customTaskId: task.customTask.id } : {}),
+      })
+      refetch()
+    } finally { setSkippingId(null) }
   }
 
   const openEdit = (task: ScheduledTask) => { setEditTask(task); setSheetOpen(true) }
@@ -897,10 +913,16 @@ export default function TasksPage() {
                             </button>
                           )}
                           {!task.done && task.animalId && task.type !== 'colony_low_stock' && (
-                            <button onClick={() => handleLog(task)} disabled={isLogging}
-                              className="text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg transition-colors">
-                              {isLogging ? '…' : 'Log'}
-                            </button>
+                            <>
+                              <button onClick={() => handleSkip(task)} disabled={skippingId === task.id}
+                                className="text-xs font-semibold bg-gray-700 hover:bg-gray-600 disabled:opacity-60 text-gray-300 px-2.5 py-1.5 rounded-lg transition-colors">
+                                {skippingId === task.id ? '…' : 'Skip'}
+                              </button>
+                              <button onClick={() => handleLog(task)} disabled={isLogging}
+                                className="text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg transition-colors">
+                                {isLogging ? '…' : 'Log'}
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>

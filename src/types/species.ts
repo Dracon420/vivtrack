@@ -9,6 +9,7 @@ export type AnimalOrder =
   | 'frog'
   | 'salamander'
   | 'tarantula'
+  | 'spider'
   | 'scorpion'
   | 'myriapod'
   | 'insect'
