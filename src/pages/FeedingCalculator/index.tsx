@@ -261,10 +261,20 @@ function FeederSubSheet({ initial, onSave, onClose }: {
           />
 
           <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1">Amount Per Feeding</label>
-            <input type="number" min="1" value={form.feederAmount}
-              onChange={e => setForm(f => ({ ...f, feederAmount: Math.max(1, parseInt(e.target.value) || 1) }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500" />
+            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-2">Amount Per Feeding</label>
+            <div className="flex items-center justify-center gap-5">
+              <button type="button"
+                onClick={() => setForm(f => ({ ...f, feederAmount: Math.max(1, f.feederAmount - 1) }))}
+                className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 transition-all select-none">
+                −
+              </button>
+              <span className="text-3xl font-bold text-gray-100 w-14 text-center tabular-nums">{form.feederAmount}</span>
+              <button type="button"
+                onClick={() => setForm(f => ({ ...f, feederAmount: f.feederAmount + 1 }))}
+                className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 transition-all select-none">
+                +
+              </button>
+            </div>
           </div>
 
           <div>
@@ -494,11 +504,7 @@ function ImportSheet({ existingIds, onImport, onClose }: {
         id: uuidv4(), appAnimalId: animal.id,
         name: animal.name, species: animal.species,
         speciesType: detectSpeciesType(animal.species),
-        feeders: [{
-          id: uuidv4(), feederKey: '', feederSize: undefined,
-          feederAmount: 1, feedingFrequency: freq, feedingIntervalDays: interval,
-          costPer: 0, costPerQty: 1,
-        }],
+        feeders: [],
       })
     }
     onImport(entries)
