@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Plus, FolderInput, FileText, Pencil, Trash2, X, Check, AlertCircle, ChevronDown } from 'lucide-react'
+import { Plus, FolderInput, FileText, Pencil, Trash2, X, Check, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
@@ -16,7 +16,8 @@ interface CalcEntry {
   name: string
   species: string
   speciesType: SpeciesCategory
-  feederType: string
+  feederKey: string
+  feederSize?: string
   feederAmount: number
   feedingFrequency: FrequencyType
   feedingIntervalDays: number
@@ -24,7 +25,69 @@ interface CalcEntry {
   costPerQty: number
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Feeder Catalog ────────────────────────────────────────────────────────────
+
+interface FeederCatalogEntry {
+  label: string
+  sizes?: string[]
+}
+
+const FEEDER_CATALOG: Record<string, FeederCatalogEntry> = {
+  // Rodents
+  rat:        { label: 'Rat',                          sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
+  mouse:      { label: 'Mouse',                        sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
+  asf:        { label: 'African Soft Fur (ASF)',        sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
+  rabbit:     { label: 'Rabbit',                       sizes: ['Kit', 'Small', 'Medium', 'Large'] },
+  gerbil:     { label: 'Gerbil',                       sizes: ['Pinky', 'Fuzzy', 'Adult'] },
+  hamster:    { label: 'Hamster',                      sizes: ['Pinky', 'Fuzzy', 'Adult'] },
+  // Birds
+  quail:      { label: 'Quail',                        sizes: ['Day-old Chick', 'Small', 'Medium', 'Large'] },
+  chick:      { label: 'Domestic Chick',               sizes: ['Day-old', 'Small', 'Medium', 'Large'] },
+  // Roaches
+  dubia:          { label: 'Dubia Roach',              sizes: ['Small (¼")', 'Medium (½")', 'Large (¾")', 'Jumbo (1"+)'] },
+  red_runner:     { label: 'Red Runner Roach',         sizes: ['Small', 'Medium', 'Large'] },
+  shadow_roach:   { label: 'Shadow Roach',             sizes: ['Small', 'Medium', 'Large'] },
+  ivory_roach:    { label: 'Ivory Head Roach',         sizes: ['Small', 'Medium', 'Large'] },
+  deathshead:     { label: "Death's Head Roach",       sizes: ['Small', 'Medium', 'Large'] },
+  hissing:        { label: 'Hissing Cockroach',        sizes: ['Small', 'Medium', 'Large'] },
+  discoid:        { label: 'Discoid Roach',            sizes: ['Small', 'Medium', 'Large'] },
+  turkistan:      { label: 'Turkistan Roach',          sizes: ['Small', 'Medium', 'Large'] },
+  lobster_roach:  { label: 'Lobster Roach',            sizes: ['Small', 'Medium', 'Large'] },
+  giant_cave:     { label: 'Giant Cave Roach',         sizes: ['Small', 'Medium', 'Large'] },
+  // Worms
+  mealworm:    { label: 'Mealworm',                    sizes: ['Small', 'Medium', 'Large'] },
+  superworm:   { label: 'Superworm',                   sizes: ['Small', 'Medium', 'Large'] },
+  waxworm:     { label: 'Waxworm' },
+  butterworm:  { label: 'Butterworm' },
+  hornworm:    { label: 'Hornworm',                    sizes: ['Small', 'Medium', 'Large'] },
+  silkworm:    { label: 'Silkworm',                    sizes: ['Small', 'Medium', 'Large'] },
+  bsfl:        { label: 'BSFL / Calci Worm',           sizes: ['Small', 'Medium', 'Large'] },
+  earthworm:   { label: 'Earthworm',                   sizes: ['Small', 'Medium', 'Large'] },
+  nightcrawler:{ label: 'Nightcrawler',                sizes: ['Small', 'Medium', 'Large'] },
+  // Insects
+  cricket:      { label: 'Cricket',                   sizes: ['Pinhead', 'Small (¼")', 'Medium (½")', 'Large (¾")', 'Adult'] },
+  locust:       { label: 'Locust',                    sizes: ['Small', 'Medium', 'Large', 'Adult'] },
+  grasshopper:  { label: 'Grasshopper',               sizes: ['Small', 'Medium', 'Large'] },
+  fruit_fly:    { label: 'Fruit Fly',                 sizes: ['Melanogaster', 'Hydei'] },
+  morio:        { label: 'Morio Worm (Giant Mealworm)' },
+}
+
+const FEEDER_GROUPS: { label: string; emoji: string; keys: string[] }[] = [
+  { label: 'Rodents',  emoji: '🐭', keys: ['rat', 'mouse', 'asf', 'rabbit', 'gerbil', 'hamster'] },
+  { label: 'Birds',    emoji: '🐦', keys: ['quail', 'chick'] },
+  { label: 'Roaches',  emoji: '🪲', keys: ['dubia', 'red_runner', 'shadow_roach', 'ivory_roach', 'deathshead', 'hissing', 'discoid', 'turkistan', 'lobster_roach', 'giant_cave'] },
+  { label: 'Worms',    emoji: '🪱', keys: ['mealworm', 'superworm', 'waxworm', 'butterworm', 'hornworm', 'silkworm', 'bsfl', 'earthworm', 'nightcrawler', 'morio'] },
+  { label: 'Insects',  emoji: '🦗', keys: ['cricket', 'locust', 'grasshopper', 'fruit_fly'] },
+]
+
+function feederDisplayName(key: string, size?: string): string {
+  const cat = FEEDER_CATALOG[key]
+  if (!cat) return key
+  if (!size || !cat.sizes?.length) return cat.label
+  return `${size} ${cat.label}`
+}
+
+// ── Species constants ─────────────────────────────────────────────────────────
 
 const SPECIES_ORDER: SpeciesCategory[] = [
   'snake', 'lizard', 'chelonian', 'amphibian', 'tarantula',
@@ -41,6 +104,7 @@ const SPECIES_EMOJI: Record<SpeciesCategory, string> = {
   tarantula: '🕷️', spider: '🕷️', scorpion: '🦂', insect: '🐛',
   fish: '🐠', mammal: '🦡', bird: '🦜', other: '🐾',
 }
+
 const FREQ_LABEL: Record<FrequencyType, string> = {
   daily: 'Daily', every_x_days: 'Every X days',
   weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly',
@@ -92,16 +156,106 @@ function freqFromIntervalDays(days: number): { freq: FrequencyType; interval: nu
   return { freq: 'every_x_days', interval: days }
 }
 
-const STORAGE_KEY = 'vivtrack-feeding-calc'
+const STORAGE_KEY = 'vivtrack-feeding-calc-v2'
 const loadEntries = (): CalcEntry[] => {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') } catch { return [] }
 }
 const saveEntries = (e: CalcEntry[]) => localStorage.setItem(STORAGE_KEY, JSON.stringify(e))
 
+// ── Feeder Picker ─────────────────────────────────────────────────────────────
+
+interface FeederPickerProps {
+  feederKey: string
+  feederSize?: string
+  onChange: (key: string, size?: string) => void
+}
+
+function FeederPicker({ feederKey, feederSize, onChange }: FeederPickerProps) {
+  const cat = FEEDER_CATALOG[feederKey]
+
+  return (
+    <div className="space-y-3">
+      <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block">Feeder Type</label>
+      <div className="space-y-2">
+        {FEEDER_GROUPS.map(group => (
+          <div key={group.label}>
+            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              <span>{group.emoji}</span> {group.label}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {group.keys.map(key => {
+                const item = FEEDER_CATALOG[key]
+                const active = feederKey === key
+                return (
+                  <button key={key} type="button"
+                    onClick={() => onChange(key, undefined)}
+                    className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors',
+                      active
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
+                    )}>
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Size selector */}
+      {cat?.sizes?.length ? (
+        <div>
+          <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1.5">Size</label>
+          <div className="flex flex-wrap gap-1.5">
+            {cat.sizes.map(sz => (
+              <button key={sz} type="button"
+                onClick={() => onChange(feederKey, sz)}
+                className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors',
+                  feederSize === sz
+                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
+                )}>
+                {sz}
+              </button>
+            ))}
+          </div>
+          {!feederSize && (
+            <p className="text-[11px] text-amber-400 mt-1.5">Select a size</p>
+          )}
+        </div>
+      ) : null}
+
+      {feederKey && (
+        <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
+          <Check size={13} className="text-emerald-400 shrink-0" />
+          <span className="text-sm text-gray-200 font-medium">
+            {feederDisplayName(feederKey, feederSize)}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── EntryForm Sheet ───────────────────────────────────────────────────────────
 
-const BLANK: Omit<CalcEntry, 'id'> = {
-  name: '', species: '', speciesType: 'other', feederType: '',
+interface EntryFormState {
+  name: string
+  species: string
+  speciesType: SpeciesCategory
+  feederKey: string
+  feederSize?: string
+  feederAmount: number
+  feedingFrequency: FrequencyType
+  feedingIntervalDays: number
+  costPer: number
+  costPerQty: number
+}
+
+const BLANK: EntryFormState = {
+  name: '', species: '', speciesType: 'other',
+  feederKey: '', feederSize: undefined,
   feederAmount: 1, feedingFrequency: 'weekly', feedingIntervalDays: 7,
   costPer: 0, costPerQty: 1,
 }
@@ -113,22 +267,39 @@ interface EntryFormProps {
 }
 
 function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
-  const [form, setForm] = useState<Omit<CalcEntry, 'id'>>(() =>
-    initial ? { ...initial } : { ...BLANK }
+  const [form, setForm] = useState<EntryFormState>(() =>
+    initial
+      ? {
+          name: initial.name, species: initial.species, speciesType: initial.speciesType,
+          feederKey: initial.feederKey, feederSize: initial.feederSize,
+          feederAmount: initial.feederAmount, feedingFrequency: initial.feedingFrequency,
+          feedingIntervalDays: initial.feedingIntervalDays,
+          costPer: initial.costPer, costPerQty: initial.costPerQty,
+        }
+      : { ...BLANK }
   )
 
-  const set = (k: keyof typeof form, v: unknown) =>
+  const set = <K extends keyof EntryFormState>(k: K, v: EntryFormState[K]) =>
     setForm(f => {
-      const next = { ...f, [k]: v } as typeof form
+      const next = { ...f, [k]: v }
       if (k === 'species') next.speciesType = detectSpeciesType(v as string)
       return next
     })
 
-  const valid = form.name.trim() && form.feederType.trim() && form.feederAmount >= 1
+  const setFeeder = (key: string, size?: string) =>
+    setForm(f => ({ ...f, feederKey: key, feederSize: size }))
+
+  const cat = FEEDER_CATALOG[form.feederKey]
+  const needsSize = !!cat?.sizes?.length
+  const valid = form.name.trim() && form.feederKey && (!needsSize || !!form.feederSize)
 
   const handleSave = () => {
     if (!valid) return
-    onSave({ id: initial?.id ?? uuidv4(), appAnimalId: initial?.appAnimalId, ...form })
+    onSave({
+      id: initial?.id ?? uuidv4(),
+      appAnimalId: initial?.appAnimalId,
+      ...form,
+    })
   }
 
   return (
@@ -140,7 +311,7 @@ function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
           <button onClick={onClose} className="text-gray-400 p-1"><X size={20} /></button>
         </div>
 
-        <div className="space-y-3 max-h-[78vh] overflow-y-auto pb-2">
+        <div className="space-y-4 max-h-[78vh] overflow-y-auto pb-2">
           {/* Name */}
           <div>
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1">Animal Name</label>
@@ -155,11 +326,10 @@ function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
               className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500" />
           </div>
 
-          {/* Species type (auto + override) */}
+          {/* Species type */}
           <div>
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1">
-              Group / Type
-              <span className="text-gray-600 normal-case font-normal ml-1">(auto-detected, override if needed)</span>
+              Group <span className="text-gray-600 normal-case font-normal">(auto-detected)</span>
             </label>
             <select value={form.speciesType} onChange={e => set('speciesType', e.target.value as SpeciesCategory)}
               className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-emerald-500">
@@ -169,13 +339,8 @@ function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
             </select>
           </div>
 
-          {/* Feeder type */}
-          <div>
-            <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1">Feeder Type</label>
-            <input value={form.feederType} onChange={e => set('feederType', e.target.value)}
-              placeholder="e.g. Frozen mice, Dubia roaches, Crickets"
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500" />
-          </div>
+          {/* Feeder picker */}
+          <FeederPicker feederKey={form.feederKey} feederSize={form.feederSize} onChange={setFeeder} />
 
           {/* Amount per feeding */}
           <div>
@@ -190,7 +355,7 @@ function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1.5">Feeding Frequency</label>
             <div className="grid grid-cols-3 gap-1.5 mb-2">
               {FREQ_OPTIONS.map(f => (
-                <button key={f} onClick={() => set('feedingFrequency', f)}
+                <button key={f} type="button" onClick={() => set('feedingFrequency', f)}
                   className={cn('py-2 rounded-xl text-xs font-semibold border transition-colors',
                     form.feedingFrequency === f
                       ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
@@ -226,7 +391,9 @@ function EntryForm({ initial, onSave, onClose }: EntryFormProps) {
               <input type="number" min="1" value={form.costPerQty}
                 onChange={e => set('costPerQty', Math.max(1, parseInt(e.target.value) || 1))}
                 className="w-20 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500" />
-              <span className="text-gray-400 text-sm truncate">{form.feederType || 'feeders'}</span>
+              <span className="text-gray-400 text-sm truncate">
+                {feederDisplayName(form.feederKey, form.feederSize) || 'feeders'}
+              </span>
             </div>
           </div>
 
@@ -287,17 +454,12 @@ function ImportSheet({ existingIds, onImport, onClose }: ImportSheetProps) {
       const days = sched?.feedingIntervalDays ?? 7
       const { freq, interval } = freqFromIntervalDays(days)
       entries.push({
-        id: uuidv4(),
-        appAnimalId: animal.id,
-        name: animal.name,
-        species: animal.species,
+        id: uuidv4(), appAnimalId: animal.id,
+        name: animal.name, species: animal.species,
         speciesType: detectSpeciesType(animal.species),
-        feederType: '',
-        feederAmount: 1,
-        feedingFrequency: freq,
-        feedingIntervalDays: interval,
-        costPer: 0,
-        costPerQty: 1,
+        feederKey: '', feederSize: undefined,
+        feederAmount: 1, feedingFrequency: freq, feedingIntervalDays: interval,
+        costPer: 0, costPerQty: 1,
       })
     }
     onImport(entries)
@@ -347,12 +509,9 @@ function ImportSheet({ existingIds, onImport, onClose }: ImportSheetProps) {
                       <p className="text-sm font-semibold text-gray-200 truncate">{animal.name}</p>
                       <p className="text-xs text-gray-500 truncate">
                         {animal.species}
-                        {sched?.feedingIntervalDays
-                          ? <span className="text-gray-600"> · every {sched.feedingIntervalDays}d</span>
-                          : null}
+                        {sched?.feedingIntervalDays && <span className="text-gray-600"> · every {sched.feedingIntervalDays}d</span>}
                       </p>
                     </div>
-                    <span className="text-[10px] text-gray-600 shrink-0">{SPECIES_LABEL[speciesType]}</span>
                   </button>
                 )
               })}
@@ -366,7 +525,7 @@ function ImportSheet({ existingIds, onImport, onClose }: ImportSheetProps) {
             {selected.size === 0 ? 'Select animals above' : `Import ${selected.size} animal${selected.size !== 1 ? 's' : ''}`}
           </button>
           {selected.size > 0 && (
-            <p className="text-center text-xs text-gray-600 mt-2">Feeder type and amount can be set after import</p>
+            <p className="text-center text-xs text-gray-600 mt-2">Feeder type and size can be set after import</p>
           )}
         </div>
       </div>
@@ -387,7 +546,7 @@ async function exportPDF(entries: CalcEntry[]) {
   const emerald: [number, number, number] = [16, 185, 129]
   const dark: [number, number, number] = [17, 24, 39]
   const mid: [number, number, number] = [75, 85, 99]
-  const light: [number, number, number] = [200, 200, 200]
+  const light: [number, number, number] = [220, 220, 220]
 
   // Header bar
   doc.setFillColor(...dark)
@@ -402,22 +561,31 @@ async function exportPDF(entries: CalcEntry[]) {
   doc.text('Monthly Feeding Order', margin + 38, 12)
   doc.setFontSize(8)
   doc.setTextColor(156, 163, 175)
-  doc.text(new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), margin, 22)
+  doc.text(
+    new Date().toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+    margin, 22
+  )
   y = 40
 
-  // Group by species type
-  const grouped = new Map<SpeciesCategory, CalcEntry[]>()
+  // Build feeder totals (grouped by display name) for the order summary
+  const feederTotals = new Map<string, { qty: number; cost: number }>()
   for (const e of entries) {
-    const arr = grouped.get(e.speciesType) ?? []
-    arr.push(e)
-    grouped.set(e.speciesType, arr)
+    if (!e.feederKey) continue
+    const name = feederDisplayName(e.feederKey, e.feederSize)
+    const cur = feederTotals.get(name) ?? { qty: 0, cost: 0 }
+    feederTotals.set(name, { qty: cur.qty + monthlyAmount(e), cost: cur.cost + monthlyCost(e) })
   }
 
-  // ── Per-species sections ──
+  // ── Per-species sections ──────────────────────────────────────────────────
+
+  const grouped = new Map<SpeciesCategory, CalcEntry[]>()
+  for (const e of entries) {
+    const arr = grouped.get(e.speciesType) ?? []; arr.push(e); grouped.set(e.speciesType, arr)
+  }
+
   for (const type of SPECIES_ORDER) {
     const items = grouped.get(type)
     if (!items?.length) continue
-
     if (y > 260) { doc.addPage(); y = 20 }
 
     // Section header
@@ -426,11 +594,11 @@ async function exportPDF(entries: CalcEntry[]) {
     doc.setTextColor(...emerald)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
-    doc.text(`${SPECIES_LABEL[type]}`, margin, y)
+    doc.text(SPECIES_LABEL[type], margin, y)
     y += 7
 
     // Column headers
-    const C = { name: margin, species: margin + 38, feeder: margin + 78, freq: margin + 112, qty: margin + 142, cost: margin + 163 }
+    const C = { name: margin, species: margin + 38, feeder: margin + 78, freq: margin + 118, qty: margin + 148, cost: margin + 168 }
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7.5)
     doc.setTextColor(...mid)
@@ -454,13 +622,13 @@ async function exportPDF(entries: CalcEntry[]) {
       const freqStr = item.feedingFrequency === 'every_x_days'
         ? `Every ${item.feedingIntervalDays}d`
         : FREQ_LABEL[item.feedingFrequency]
-
+      const feederStr = feederDisplayName(item.feederKey, item.feederSize) || '(not set)'
       const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + '…' : s
 
       doc.setTextColor(31, 41, 55)
       doc.text(trunc(item.name, 16), C.name, y)
       doc.text(trunc(item.species, 20), C.species, y)
-      doc.text(trunc(`${item.feederAmount}× ${item.feederType}`, 20), C.feeder, y)
+      doc.text(trunc(`${item.feederAmount}× ${feederStr}`, 22), C.feeder, y)
       doc.text(freqStr, C.freq, y)
       doc.setFont('helvetica', 'bold')
       doc.text(monthlyAmount(item).toString(), C.qty, y)
@@ -469,15 +637,15 @@ async function exportPDF(entries: CalcEntry[]) {
       doc.text(cost > 0 ? `$${cost.toFixed(2)}` : '—', C.cost, y)
       doc.setTextColor(31, 41, 55)
       y += 6
-
       doc.setDrawColor(243, 244, 246)
       doc.line(margin, y - 1.5, rightEdge, y - 1.5)
     }
     y += 5
   }
 
-  // ── Summary section ──
-  if (y > 250) { doc.addPage(); y = 20 }
+  // ── Order Summary (bundled by feeder type+size) ──────────────────────────
+
+  if (y > 245) { doc.addPage(); y = 20 }
   doc.setDrawColor(...emerald)
   doc.setLineWidth(0.5)
   doc.line(margin, y, rightEdge, y)
@@ -485,39 +653,65 @@ async function exportPDF(entries: CalcEntry[]) {
   y += 8
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
+  doc.setFontSize(12)
   doc.setTextColor(31, 41, 55)
   doc.text('Monthly Order Summary', margin, y)
-  y += 8
+  y += 3
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(...mid)
+  doc.text('Same feeder type & size bundled together — copy this section to send to your supplier.', margin, y + 4)
+  y += 10
 
-  const feederTotals = new Map<string, { qty: number; cost: number }>()
-  for (const e of entries) {
-    const cur = feederTotals.get(e.feederType) ?? { qty: 0, cost: 0 }
-    feederTotals.set(e.feederType, { qty: cur.qty + monthlyAmount(e), cost: cur.cost + monthlyCost(e) })
+  // Group feeder totals by category for PDF ordering
+  const summaryLines: { label: string; qty: number; cost: number }[] = []
+  for (const group of FEEDER_GROUPS) {
+    for (const key of group.keys) {
+      const cat = FEEDER_CATALOG[key]
+      if (!cat) continue
+      if (cat.sizes?.length) {
+        for (const sz of cat.sizes) {
+          const displayName = `${sz} ${cat.label}`
+          const row = feederTotals.get(displayName)
+          if (row) summaryLines.push({ label: displayName, qty: row.qty, cost: row.cost })
+        }
+      } else {
+        const row = feederTotals.get(cat.label)
+        if (row) summaryLines.push({ label: cat.label, qty: row.qty, cost: row.cost })
+      }
+    }
+  }
+  // Any remaining (shouldn't happen with catalog, but safety net)
+  for (const [label, row] of feederTotals) {
+    if (!summaryLines.find(l => l.label === label)) {
+      summaryLines.push({ label, qty: row.qty, cost: row.cost })
+    }
   }
 
   let totalCost = 0
-  doc.setFontSize(9)
-  for (const [feeder, { qty, cost }] of feederTotals) {
+  doc.setFontSize(9.5)
+
+  for (const line of summaryLines) {
     if (y > 275) { doc.addPage(); y = 20 }
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(31, 41, 55)
-    doc.text(feeder, margin, y)
+    doc.text(line.label, margin, y)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...mid)
-    doc.text(`${qty} units`, margin + 70, y)
-    if (cost > 0) {
+    doc.text(`${line.qty}`, margin + 90, y)
+    doc.text('units', margin + 102, y)
+    if (line.cost > 0) {
       doc.setTextColor(...emerald)
-      doc.text(`$${cost.toFixed(2)}`, margin + 100, y)
-      totalCost += cost
+      doc.text(`$${line.cost.toFixed(2)}`, margin + 125, y)
+      totalCost += line.cost
     }
-    y += 6.5
+    y += 7
   }
 
   if (totalCost > 0) {
     y += 2
     doc.setDrawColor(...light)
-    doc.line(margin, y, margin + 115, y)
+    doc.line(margin, y, margin + 140, y)
     y += 6
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(11)
@@ -566,7 +760,6 @@ export default function FeedingCalculator() {
     try { await exportPDF(entries) } finally { setExporting(false) }
   }
 
-  // Group by species type
   const grouped = useMemo(() => {
     const map = new Map<SpeciesCategory, CalcEntry[]>()
     for (const e of entries) {
@@ -575,12 +768,14 @@ export default function FeedingCalculator() {
     return map
   }, [entries])
 
-  // Summary totals
+  // Summary: bundle same feeder+size across all animals
   const feederTotals = useMemo(() => {
     const map = new Map<string, { qty: number; cost: number }>()
     for (const e of entries) {
-      const cur = map.get(e.feederType) ?? { qty: 0, cost: 0 }
-      map.set(e.feederType, { qty: cur.qty + monthlyAmount(e), cost: cur.cost + monthlyCost(e) })
+      if (!e.feederKey) continue
+      const name = feederDisplayName(e.feederKey, e.feederSize)
+      const cur = map.get(name) ?? { qty: 0, cost: 0 }
+      map.set(name, { qty: cur.qty + monthlyAmount(e), cost: cur.cost + monthlyCost(e) })
     }
     return map
   }, [entries])
@@ -591,17 +786,15 @@ export default function FeedingCalculator() {
   const existingAppIds = useMemo(() =>
     new Set(entries.map(e => e.appAnimalId).filter(Boolean) as string[]), [entries])
 
-  const needsFeederInfo = entries.filter(e => !e.feederType)
+  const needsFeederInfo = entries.filter(e => !e.feederKey || (FEEDER_CATALOG[e.feederKey]?.sizes?.length && !e.feederSize))
 
   return (
     <div className="min-h-full pb-24">
-      {/* Header */}
       <div className="px-4 pt-6 pb-4">
         <h1 className="text-2xl font-bold text-gray-100">Feeding Calculator</h1>
         <p className="text-sm text-gray-500 mt-0.5">Monthly feeder needs &amp; estimated costs</p>
       </div>
 
-      {/* Action buttons */}
       <div className="px-4 flex gap-2 mb-4">
         <button onClick={() => { setEditEntry(undefined); setSheet('add') }}
           className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -613,27 +806,23 @@ export default function FeedingCalculator() {
         </button>
       </div>
 
-      {/* Incomplete entries warning */}
       {needsFeederInfo.length > 0 && (
         <div className="mx-4 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5 flex items-start gap-2">
           <AlertCircle size={15} className="text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-300">
-            {needsFeederInfo.length} animal{needsFeederInfo.length !== 1 ? 's' : ''} need{needsFeederInfo.length === 1 ? 's' : ''} feeder type set.
-            Tap <strong>Edit</strong> to fill in feeder details.
+            {needsFeederInfo.length} animal{needsFeederInfo.length !== 1 ? 's' : ''} need{needsFeederInfo.length === 1 ? 's' : ''} feeder info set — tap Edit.
           </p>
         </div>
       )}
 
-      {/* Empty state */}
       {entries.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
           <span className="text-5xl mb-4">🍖</span>
           <p className="text-gray-300 font-semibold text-lg">No animals yet</p>
-          <p className="text-gray-500 text-sm mt-1">Add animals manually or import from the app to start calculating monthly feeder needs.</p>
+          <p className="text-gray-500 text-sm mt-1">Add animals manually or import from the app.</p>
         </div>
       )}
 
-      {/* Animal list grouped by species */}
       {entries.length > 0 && (
         <div className="px-4 space-y-4 mb-4">
           {SPECIES_ORDER.filter(t => grouped.has(t)).map(type => {
@@ -653,7 +842,10 @@ export default function FeedingCalculator() {
                     const freqStr = entry.feedingFrequency === 'every_x_days'
                       ? `Every ${entry.feedingIntervalDays} days`
                       : FREQ_LABEL[entry.feedingFrequency]
-                    const missing = !entry.feederType
+                    const feederName = feederDisplayName(entry.feederKey, entry.feederSize)
+                    const missingFeeder = !entry.feederKey
+                    const missingSize = entry.feederKey && FEEDER_CATALOG[entry.feederKey]?.sizes?.length && !entry.feederSize
+                    const missing = missingFeeder || missingSize
 
                     return (
                       <div key={entry.id}
@@ -668,11 +860,13 @@ export default function FeedingCalculator() {
                             </div>
                             <p className="text-xs text-gray-500 truncate">{entry.species}</p>
                             {missing ? (
-                              <p className="text-xs text-amber-400 mt-1">Feeder type not set — tap Edit</p>
+                              <p className="text-xs text-amber-400 mt-1">
+                                {missingFeeder ? 'Feeder type not set' : 'Feeder size not set'} — tap Edit
+                              </p>
                             ) : (
                               <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                                 <span className="text-xs text-gray-400">
-                                  <span className="text-gray-600">Feeder:</span> {entry.feederAmount}× {entry.feederType}
+                                  <span className="text-gray-600">Feeder:</span> {entry.feederAmount}× {feederName}
                                 </span>
                                 <span className="text-xs text-gray-400">
                                   <span className="text-gray-600">Freq:</span> {freqStr}
@@ -688,7 +882,6 @@ export default function FeedingCalculator() {
                             </div>
                           )}
                         </div>
-
                         <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-800">
                           <button onClick={() => { setEditEntry(entry); setSheet('add') }}
                             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
@@ -712,13 +905,12 @@ export default function FeedingCalculator() {
       {/* Monthly Summary */}
       {feederTotals.size > 0 && (
         <div className="mx-4 mb-4 bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Monthly Summary</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Monthly Order Summary</p>
+          <p className="text-[11px] text-gray-600 mb-3 -mt-1">Same feeder &amp; size bundled together</p>
           <div className="space-y-2">
             {[...feederTotals.entries()].map(([feeder, { qty, cost }]) => (
               <div key={feeder} className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm text-gray-200 truncate">{feeder}</span>
-                </div>
+                <span className="text-sm text-gray-200 truncate flex-1 mr-3">{feeder}</span>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-sm font-bold text-emerald-400">{qty}</span>
                   {cost > 0 && <span className="text-xs text-gray-500">${cost.toFixed(2)}</span>}
@@ -738,7 +930,6 @@ export default function FeedingCalculator() {
         </div>
       )}
 
-      {/* Export button */}
       {entries.length > 0 && (
         <div className="px-4">
           <button onClick={handleExport} disabled={exporting}
@@ -757,22 +948,17 @@ export default function FeedingCalculator() {
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => setDeleteId(null)} />
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-800 rounded-t-2xl px-4 pt-4 pb-safe">
             <p className="text-base font-bold text-gray-100 mb-1">Remove animal?</p>
-            <p className="text-sm text-gray-500 mb-4">This removes it from the calculator only — the app record is not affected.</p>
+            <p className="text-sm text-gray-500 mb-4">This removes it from the calculator only.</p>
             <div className="flex gap-2">
               <button onClick={() => setDeleteId(null)}
-                className="flex-1 py-3 bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm rounded-xl">
-                Cancel
-              </button>
+                className="flex-1 py-3 bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm rounded-xl">Cancel</button>
               <button onClick={() => deleteEntry(deleteId)}
-                className="flex-1 py-3 bg-red-500 hover:bg-red-400 text-white font-semibold text-sm rounded-xl">
-                Remove
-              </button>
+                className="flex-1 py-3 bg-red-500 hover:bg-red-400 text-white font-semibold text-sm rounded-xl">Remove</button>
             </div>
           </div>
         </>
       )}
 
-      {/* Add / Edit sheet */}
       {sheet === 'add' && (
         <EntryForm
           initial={editEntry}
@@ -781,7 +967,6 @@ export default function FeedingCalculator() {
         />
       )}
 
-      {/* Import sheet */}
       {sheet === 'import' && (
         <ImportSheet
           existingIds={existingAppIds}
