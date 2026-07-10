@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Plus, FolderInput, FileText, Pencil, Trash2, X, Check, AlertCircle, Download } from 'lucide-react'
+import { Plus, FolderInput, FileText, Pencil, Trash2, X, Check, AlertCircle, Download, ExternalLink } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
@@ -38,17 +38,14 @@ interface CalcEntry {
 interface CatalogEntry { label: string; sizes?: string[] }
 
 const FEEDER_CATALOG: Record<string, CatalogEntry> = {
-  // Rodents
   rat:          { label: 'Rat',                    sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
   mouse:        { label: 'Mouse',                  sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
   asf:          { label: 'African Soft Fur (ASF)', sizes: ['Pinky', 'Fuzzy', 'Pup', 'Small', 'Medium', 'Large', 'Jumbo'] },
   rabbit:       { label: 'Rabbit',                 sizes: ['Kit', 'Small', 'Medium', 'Large'] },
   gerbil:       { label: 'Gerbil',                 sizes: ['Pinky', 'Fuzzy', 'Adult'] },
   hamster:      { label: 'Hamster',                sizes: ['Pinky', 'Fuzzy', 'Adult'] },
-  // Birds
   quail:        { label: 'Quail',                  sizes: ['Day-old Chick', 'Small', 'Medium', 'Large'] },
   chick:        { label: 'Domestic Chick',         sizes: ['Day-old', 'Small', 'Medium', 'Large'] },
-  // Roaches
   dubia:        { label: 'Dubia Roach',            sizes: ['Small (¼")', 'Medium (½")', 'Large (¾")', 'Jumbo (1"+)'] },
   red_runner:   { label: 'Red Runner Roach',       sizes: ['Small', 'Medium', 'Large'] },
   shadow_roach: { label: 'Shadow Roach',           sizes: ['Small', 'Medium', 'Large'] },
@@ -59,7 +56,6 @@ const FEEDER_CATALOG: Record<string, CatalogEntry> = {
   turkistan:    { label: 'Turkistan Roach',        sizes: ['Small', 'Medium', 'Large'] },
   lobster_roach:{ label: 'Lobster Roach',          sizes: ['Small', 'Medium', 'Large'] },
   giant_cave:   { label: 'Giant Cave Roach',       sizes: ['Small', 'Medium', 'Large'] },
-  // Worms
   mealworm:     { label: 'Mealworm',               sizes: ['Small', 'Medium', 'Large'] },
   superworm:    { label: 'Superworm',              sizes: ['Small', 'Medium', 'Large'] },
   morio:        { label: 'Giant Mealworm (Morio)' },
@@ -70,14 +66,13 @@ const FEEDER_CATALOG: Record<string, CatalogEntry> = {
   bsfl:         { label: 'BSFL / Calci Worm',      sizes: ['Small', 'Medium', 'Large'] },
   earthworm:    { label: 'Earthworm',              sizes: ['Small', 'Medium', 'Large'] },
   nightcrawler: { label: 'Nightcrawler',           sizes: ['Small', 'Medium', 'Large'] },
-  // Insects
   cricket:      { label: 'Cricket',                sizes: ['Pinhead', 'Small (¼")', 'Medium (½")', 'Large (¾")', 'Adult'] },
   locust:       { label: 'Locust',                 sizes: ['Small', 'Medium', 'Large', 'Adult'] },
   grasshopper:  { label: 'Grasshopper',            sizes: ['Small', 'Medium', 'Large'] },
   fruit_fly:    { label: 'Fruit Fly',              sizes: ['Melanogaster', 'Hydei'] },
 }
 
-const FEEDER_GROUPS = [
+const FEEDER_GROUPS: { label: string; emoji: string; keys: string[] }[] = [
   { label: 'Rodents',  emoji: '🐭', keys: ['rat', 'mouse', 'asf', 'rabbit', 'gerbil', 'hamster'] },
   { label: 'Birds',    emoji: '🐦', keys: ['quail', 'chick'] },
   { label: 'Roaches',  emoji: '🪲', keys: ['dubia', 'red_runner', 'shadow_roach', 'ivory_roach', 'deathshead', 'hissing', 'discoid', 'turkistan', 'lobster_roach', 'giant_cave'] },
@@ -160,11 +155,62 @@ function freqFromDays(days: number): { freq: FrequencyType; interval: number } {
   return { freq: 'every_x_days', interval: days }
 }
 
+// Build summary lines sorted by catalog group + size order
+interface SummaryLine { groupLabel: string; groupEmoji: string; label: string; qty: number; cost: number }
+function buildSortedSummary(totals: Map<string, { qty: number; cost: number }>): SummaryLine[] {
+  const result: SummaryLine[] = []
+  for (const group of FEEDER_GROUPS) {
+    for (const key of group.keys) {
+      const cat = FEEDER_CATALOG[key]
+      if (!cat) continue
+      if (cat.sizes?.length) {
+        for (const sz of cat.sizes) {
+          const lbl = `${sz} ${cat.label}`
+          const row = totals.get(lbl)
+          if (row) result.push({ groupLabel: group.label, groupEmoji: group.emoji, label: lbl, ...row })
+        }
+      } else {
+        const row = totals.get(cat.label)
+        if (row) result.push({ groupLabel: group.label, groupEmoji: group.emoji, label: cat.label, ...row })
+      }
+    }
+  }
+  for (const [label, row] of totals) {
+    if (!result.find(r => r.label === label))
+      result.push({ groupLabel: 'Other', groupEmoji: '🐾', label, ...row })
+  }
+  return result
+}
+
 const STORAGE_KEY = 'vivtrack-feeding-calc-v3'
 const loadEntries = (): CalcEntry[] => {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') } catch { return [] }
 }
 const saveEntries = (e: CalcEntry[]) => localStorage.setItem(STORAGE_KEY, JSON.stringify(e))
+
+// ── Tap stepper ───────────────────────────────────────────────────────────────
+
+function Stepper({ value, min = 1, max = 999, onChange }: {
+  value: number; min?: number; max?: number; onChange: (v: number) => void
+}) {
+  return (
+    <div className="flex items-center justify-center gap-5">
+      <button type="button"
+        onClick={() => onChange(Math.max(min, value - 1))}
+        disabled={value <= min}
+        className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 disabled:opacity-40 transition-all select-none">
+        −
+      </button>
+      <span className="text-3xl font-bold text-gray-100 w-14 text-center tabular-nums">{value}</span>
+      <button type="button"
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 disabled:opacity-40 transition-all select-none">
+        +
+      </button>
+    </div>
+  )
+}
 
 // ── Feeder Picker ─────────────────────────────────────────────────────────────
 
@@ -237,7 +283,9 @@ function FeederSubSheet({ initial, onSave, onClose }: {
   initial?: FeederLine; onSave: (l: FeederLine) => void; onClose: () => void
 }) {
   const [form, setForm] = useState<Omit<FeederLine, 'id'>>(() =>
-    initial ? { feederKey: initial.feederKey, feederSize: initial.feederSize, feederAmount: initial.feederAmount, feedingFrequency: initial.feedingFrequency, feedingIntervalDays: initial.feedingIntervalDays, costPer: initial.costPer, costPerQty: initial.costPerQty } : { ...BLANK_LINE }
+    initial
+      ? { feederKey: initial.feederKey, feederSize: initial.feederSize, feederAmount: initial.feederAmount, feedingFrequency: initial.feedingFrequency, feedingIntervalDays: initial.feedingIntervalDays, costPer: initial.costPer, costPerQty: initial.costPerQty }
+      : { ...BLANK_LINE }
   )
 
   const cat = FEEDER_CATALOG[form.feederKey]
@@ -253,7 +301,7 @@ function FeederSubSheet({ initial, onSave, onClose }: {
           <button onClick={onClose} className="text-gray-400 p-1"><X size={20} /></button>
         </div>
 
-        <div className="space-y-4 max-h-[75vh] overflow-y-auto pb-2">
+        <div className="space-y-5 max-h-[75vh] overflow-y-auto pb-2">
           <FeederPicker
             feederKey={form.feederKey}
             feederSize={form.feederSize}
@@ -262,24 +310,13 @@ function FeederSubSheet({ initial, onSave, onClose }: {
 
           <div>
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-2">Amount Per Feeding</label>
-            <div className="flex items-center justify-center gap-5">
-              <button type="button"
-                onClick={() => setForm(f => ({ ...f, feederAmount: Math.max(1, f.feederAmount - 1) }))}
-                className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 transition-all select-none">
-                −
-              </button>
-              <span className="text-3xl font-bold text-gray-100 w-14 text-center tabular-nums">{form.feederAmount}</span>
-              <button type="button"
-                onClick={() => setForm(f => ({ ...f, feederAmount: f.feederAmount + 1 }))}
-                className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 text-gray-200 text-2xl font-bold flex items-center justify-center hover:bg-gray-700 active:scale-95 transition-all select-none">
-                +
-              </button>
-            </div>
+            <Stepper value={form.feederAmount} min={1} max={999}
+              onChange={v => setForm(f => ({ ...f, feederAmount: v }))} />
           </div>
 
           <div>
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider block mb-1.5">Frequency</label>
-            <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className="grid grid-cols-3 gap-1.5 mb-3">
               {FREQ_OPTIONS.map(f => (
                 <button key={f} type="button" onClick={() => setForm(prev => ({ ...prev, feedingFrequency: f }))}
                   className={cn('py-2 rounded-xl text-xs font-semibold border transition-colors',
@@ -292,12 +329,13 @@ function FeederSubSheet({ initial, onSave, onClose }: {
               ))}
             </div>
             {form.feedingFrequency === 'every_x_days' && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-400">Every</span>
-                <input type="number" min="2" max="365" value={form.feedingIntervalDays}
-                  onChange={e => setForm(prev => ({ ...prev, feedingIntervalDays: Math.max(2, parseInt(e.target.value) || 2) }))}
-                  className="w-20 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 text-center focus:outline-none focus:border-emerald-500" />
-                <span className="text-sm text-gray-400">days</span>
+              <div>
+                <p className="text-xs text-gray-500 text-center mb-2">Feed every how many days?</p>
+                <Stepper value={form.feedingIntervalDays} min={2} max={365}
+                  onChange={v => setForm(f => ({ ...f, feedingIntervalDays: v }))} />
+                <p className="text-xs text-gray-600 text-center mt-1.5">
+                  = approx. {Math.round(30 / form.feedingIntervalDays)} feedings/month
+                </p>
               </div>
             )}
           </div>
@@ -358,10 +396,6 @@ function EntryForm({ initial, onSave, onClose }: {
     setAddingFeeder(false)
   }
 
-  const removeFeeder = (id: string) => setFeeders(prev => prev.filter(f => f.id !== id))
-
-  const valid = name.trim().length > 0
-
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -396,34 +430,29 @@ function EntryForm({ initial, onSave, onClose }: {
             </select>
           </div>
 
-          {/* Feeder list */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Feeders</label>
-              {feeders.length > 0 && (
-                <span className="text-[10px] text-gray-600">{feeders.length} added</span>
-              )}
+              {feeders.length > 0 && <span className="text-[10px] text-gray-600">{feeders.length} added</span>}
             </div>
-
             {feeders.length === 0 ? (
-              <p className="text-xs text-gray-600 text-center py-2">No feeders added yet</p>
+              <p className="text-xs text-gray-600 text-center py-1.5">No feeders added yet</p>
             ) : (
               <div className="space-y-1.5 mb-2">
                 {feeders.map(line => {
                   const freqStr = line.feedingFrequency === 'every_x_days'
                     ? `every ${line.feedingIntervalDays}d`
                     : FREQ_LABEL[line.feedingFrequency].toLowerCase()
-                  const qty = lineMonthlyQty(line)
                   return (
                     <div key={line.id} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-200 font-medium truncate">{feederLabel(line.feederKey, line.feederSize)}</p>
-                        <p className="text-xs text-gray-500">{line.feederAmount}× · {freqStr} · {qty}/mo</p>
+                        <p className="text-xs text-gray-500">{line.feederAmount}× · {freqStr} · {lineMonthlyQty(line)}/mo</p>
                       </div>
                       <button onClick={() => setFeederEdit(line)} className="text-gray-500 hover:text-gray-200 p-1 transition-colors">
                         <Pencil size={13} />
                       </button>
-                      <button onClick={() => removeFeeder(line.id)} className="text-red-500 hover:text-red-400 p-1 transition-colors">
+                      <button onClick={() => setFeeders(prev => prev.filter(f => f.id !== line.id))} className="text-red-500 hover:text-red-400 p-1 transition-colors">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -431,22 +460,21 @@ function EntryForm({ initial, onSave, onClose }: {
                 })}
               </div>
             )}
-
             <button onClick={() => setAddingFeeder(true)}
               className="w-full py-2 border border-dashed border-gray-700 hover:border-emerald-600 text-gray-500 hover:text-emerald-400 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5">
               <Plus size={13} /> Add Feeder
             </button>
           </div>
 
-          <button onClick={() => valid && onSave({ id: initial?.id ?? uuidv4(), appAnimalId: initial?.appAnimalId, name, species, speciesType, feeders })}
-            disabled={!valid}
+          <button
+            onClick={() => name.trim() && onSave({ id: initial?.id ?? uuidv4(), appAnimalId: initial?.appAnimalId, name, species, speciesType, feeders })}
+            disabled={!name.trim()}
             className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2">
             <Check size={16} /> {initial ? 'Save Changes' : 'Add Animal'}
           </button>
         </div>
       </div>
 
-      {/* Feeder sub-sheet */}
       {(addingFeeder || feederEdit) && (
         <FeederSubSheet
           initial={feederEdit ?? undefined}
@@ -497,9 +525,6 @@ function ImportSheet({ existingIds, onImport, onClose }: {
     for (const id of selected) {
       const animal = animals.find(a => a.id === id)
       if (!animal) continue
-      const sched = schedules.find(s => s.animalId === id)
-      const days = sched?.feedingIntervalDays ?? 7
-      const { freq, interval } = freqFromDays(days)
       entries.push({
         id: uuidv4(), appAnimalId: animal.id,
         name: animal.name, species: animal.species,
@@ -519,11 +544,10 @@ function ImportSheet({ existingIds, onImport, onClose }: {
         <div className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0">
           <div>
             <h2 className="text-base font-bold text-gray-100">Import from App</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Select animals — set feeder types after import</p>
+            <p className="text-xs text-gray-500 mt-0.5">Select animals — add feeders after import</p>
           </div>
           <button onClick={onClose} className="text-gray-400 p-1"><X size={20} /></button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-4 pb-2">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -537,7 +561,6 @@ function ImportSheet({ existingIds, onImport, onClose }: {
             <div className="space-y-1.5">
               {available.map(animal => {
                 const isSel = selected.has(animal.id)
-                const sched = schedules.find(s => s.animalId === animal.id)
                 const st = detectSpeciesType(animal.species)
                 return (
                   <button key={animal.id} onClick={() => toggle(animal.id)}
@@ -552,10 +575,7 @@ function ImportSheet({ existingIds, onImport, onClose }: {
                     <span className="text-lg shrink-0">{SPECIES_EMOJI[st]}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-200 truncate">{animal.name}</p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {animal.species}
-                        {sched?.feedingIntervalDays && <span className="text-gray-600"> · every {sched.feedingIntervalDays}d</span>}
-                      </p>
+                      <p className="text-xs text-gray-500 truncate">{animal.species}</p>
                     </div>
                   </button>
                 )
@@ -563,7 +583,6 @@ function ImportSheet({ existingIds, onImport, onClose }: {
             </div>
           )}
         </div>
-
         <div className="px-4 py-3 border-t border-gray-800 shrink-0">
           <button onClick={handleImport} disabled={selected.size === 0}
             className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-white font-bold text-sm rounded-xl transition-colors">
@@ -575,7 +594,7 @@ function ImportSheet({ existingIds, onImport, onClose }: {
   )
 }
 
-// ── PDF Generation ────────────────────────────────────────────────────────────
+// ── PDF Generation — two sections ─────────────────────────────────────────────
 
 async function generatePDF(entries: CalcEntry[]): Promise<string> {
   const { jsPDF } = await import('jspdf')
@@ -583,198 +602,225 @@ async function generatePDF(entries: CalcEntry[]): Promise<string> {
   const pageW = 210
   const margin = 14
   const rightEdge = pageW - margin
-  let y = 22
 
-  const rgb = {
-    emerald: [16, 185, 129] as [number, number, number],
-    dark:    [17, 24, 39]   as [number, number, number],
-    mid:     [75, 85, 99]   as [number, number, number],
-    light:   [220, 220, 220] as [number, number, number],
-    fg:      [31, 41, 55]   as [number, number, number],
-    white:   [255, 255, 255] as [number, number, number],
-    subdued: [156, 163, 175] as [number, number, number],
-    rowline: [243, 244, 246] as [number, number, number],
+  const C = {
+    emerald: [16, 185, 129]  as [number,number,number],
+    dark:    [17, 24, 39]    as [number,number,number],
+    fg:      [31, 41, 55]    as [number,number,number],
+    mid:     [75, 85, 99]    as [number,number,number],
+    light:   [220, 220, 220] as [number,number,number],
+    sub:     [156, 163, 175] as [number,number,number],
+    stripe:  [245, 250, 247] as [number,number,number],
   }
 
-  // Header bar
-  doc.setFillColor(...rgb.dark)
-  doc.rect(0, 0, pageW, 30, 'F')
-  doc.setTextColor(...rgb.emerald); doc.setFont('helvetica', 'bold'); doc.setFontSize(16)
-  doc.text('VivTrack', margin, 12)
-  doc.setTextColor(...rgb.white); doc.setFont('helvetica', 'normal'); doc.setFontSize(11)
-  doc.text('Monthly Feeding Order', margin + 38, 12)
-  doc.setFontSize(8); doc.setTextColor(...rgb.subdued)
-  doc.text(new Date().toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), margin, 22)
-  y = 40
+  const dateStr = new Date().toLocaleDateString('en-AU', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  })
 
-  // Pre-build global feeder totals (for order summary)
-  const feederTotals = new Map<string, { qty: number; cost: number }>()
-  for (const entry of entries) {
-    for (const line of entry.feeders) {
-      if (!line.feederKey) continue
-      const key = feederLabel(line.feederKey, line.feederSize)
-      const cur = feederTotals.get(key) ?? { qty: 0, cost: 0 }
-      feederTotals.set(key, { qty: cur.qty + lineMonthlyQty(line), cost: cur.cost + lineMonthlyCost(line) })
-    }
+  const drawPageHeader = (title: string, subtitle: string) => {
+    doc.setFillColor(...C.dark); doc.rect(0, 0, pageW, 32, 'F')
+    doc.setTextColor(...C.emerald); doc.setFont('helvetica', 'bold'); doc.setFontSize(15)
+    doc.text('VivTrack', margin, 12)
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'normal'); doc.setFontSize(11)
+    doc.text(title, margin + 36, 12)
+    doc.setFontSize(8); doc.setTextColor(...C.sub)
+    doc.text(subtitle, margin, 22)
+    doc.text(dateStr, margin, 28)
+    return 42
   }
 
-  // Group entries by species
+  // ── SECTION 1: Animal Feeding Chart ────────────────────────────────────────
+  let y = drawPageHeader('Animal Feeding Chart', 'Your personal feeding records — keep this copy for yourself')
+
   const grouped = new Map<SpeciesCategory, CalcEntry[]>()
   for (const e of entries) {
     const arr = grouped.get(e.speciesType) ?? []; arr.push(e); grouped.set(e.speciesType, arr)
   }
 
-  // ── Per-species sections ──
   for (const type of SPECIES_ORDER) {
     const items = grouped.get(type)
     if (!items?.length) continue
-    if (y > 255) { doc.addPage(); y = 20 }
+    if (y > 258) { doc.addPage(); y = 20 }
 
-    // Section header
-    doc.setFillColor(240, 253, 249)
+    // Species group header
+    doc.setFillColor(...C.stripe)
     doc.rect(margin - 2, y - 4, rightEdge - margin + 4, 8, 'F')
-    doc.setTextColor(...rgb.emerald); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+    doc.setTextColor(...C.emerald); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
     doc.text(SPECIES_LABEL[type], margin, y)
     y += 7
 
     // Column headers
-    const C = { name: margin, feeder: margin + 42, freq: margin + 105, qty: margin + 140, cost: margin + 163 }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...rgb.mid)
-    doc.text('Name / Species', C.name, y)
-    doc.text('Feeder', C.feeder, y)
-    doc.text('Frequency', C.freq, y)
-    doc.text('Mo. Qty', C.qty, y)
-    doc.text('Mo. Cost', C.cost, y)
+    const cols = { animal: margin, feeder: margin + 44, freq: margin + 107, qty: margin + 143, cost: margin + 165 }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...C.mid)
+    doc.text('Animal / Species', cols.animal, y)
+    doc.text('Feeder', cols.feeder, y)
+    doc.text('Frequency', cols.freq, y)
+    doc.text('Mo. Qty', cols.qty, y)
+    doc.text('Mo. Cost', cols.cost, y)
     y += 3.5
-    doc.setDrawColor(...rgb.light); doc.line(margin, y, rightEdge, y)
-    y += 4.5
+    doc.setDrawColor(...C.light); doc.line(margin, y, rightEdge, y); y += 4
 
     for (const item of items) {
-      if (!item.feeders.length) continue
+      const validFeeders = item.feeders.filter(f => f.feederKey)
+      if (!validFeeders.length) continue
       if (y > 268) { doc.addPage(); y = 20 }
 
-      const feederRows = item.feeders.filter(f => f.feederKey)
-
-      for (let i = 0; i < feederRows.length; i++) {
-        const line = feederRows[i]
+      for (let i = 0; i < validFeeders.length; i++) {
+        const line = validFeeders[i]
         const freqStr = line.feedingFrequency === 'every_x_days'
           ? `Every ${line.feedingIntervalDays}d`
           : FREQ_LABEL[line.feedingFrequency]
         const cost = lineMonthlyCost(line)
         const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + '…' : s
 
-        doc.setFont('helvetica', i === 0 ? 'bold' : 'normal')
-        doc.setFontSize(8.5); doc.setTextColor(...rgb.fg)
-
-        // Name & species only on first feeder row for this animal
         if (i === 0) {
-          doc.setFont('helvetica', 'bold')
-          doc.text(trunc(item.name, 18), C.name, y)
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...rgb.mid)
-          doc.text(trunc(item.species, 22), C.name, y + 4.5)
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...C.fg)
+          doc.text(trunc(item.name, 18), cols.animal, y)
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...C.mid)
+          doc.text(trunc(item.species, 22), cols.animal, y + 4)
         }
 
-        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...rgb.fg)
-        doc.text(`${line.feederAmount}× ${trunc(feederLabel(line.feederKey, line.feederSize), 22)}`, C.feeder, y)
-        doc.text(freqStr, C.freq, y)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.fg)
+        doc.text(`${line.feederAmount}× ${trunc(feederLabel(line.feederKey, line.feederSize), 22)}`, cols.feeder, y)
+        doc.text(freqStr, cols.freq, y)
         doc.setFont('helvetica', 'bold')
-        doc.text(lineMonthlyQty(line).toString(), C.qty, y)
+        doc.text(lineMonthlyQty(line).toString(), cols.qty, y)
         doc.setFont('helvetica', 'normal')
         doc.setTextColor(cost > 0 ? 16 : 156, cost > 0 ? 185 : 163, cost > 0 ? 129 : 175)
-        doc.text(cost > 0 ? `$${cost.toFixed(2)}` : '—', C.cost, y)
-        doc.setTextColor(...rgb.fg)
+        doc.text(cost > 0 ? `$${cost.toFixed(2)}` : '—', cols.cost, y)
+        doc.setTextColor(...C.fg)
 
-        // Row height: first row is taller (name + species), extras are normal
         y += i === 0 ? 8 : 6
-        if (y > 270) { doc.addPage(); y = 20 }
+        if (y > 272) { doc.addPage(); y = 20 }
       }
 
-      // Light separator between animals
-      doc.setDrawColor(...rgb.rowline); doc.line(margin, y - 1, rightEdge, y - 1)
+      doc.setDrawColor(235, 235, 235); doc.line(margin, y - 1, rightEdge, y - 1)
       y += 2
     }
     y += 3
   }
 
-  // ── Order Summary ──
-  if (y > 240) { doc.addPage(); y = 20 }
-  doc.setDrawColor(...rgb.emerald); doc.setLineWidth(0.5)
-  doc.line(margin, y, rightEdge, y); doc.setLineWidth(0.2); y += 8
+  // ── SECTION 2: Monthly Supplier Order (new page) ───────────────────────────
+  doc.addPage()
+  y = drawPageHeader('Monthly Supplier Order', 'Forward this page to your feeder supplier as your monthly order')
 
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...rgb.fg)
-  doc.text('Monthly Order Summary', margin, y); y += 5
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...rgb.mid)
-  doc.text('Same feeder type & size bundled — copy this section to send to your supplier.', margin, y); y += 9
+  // Pre-build totals
+  const totals = new Map<string, { qty: number; cost: number }>()
+  for (const entry of entries) {
+    for (const line of entry.feeders) {
+      if (!line.feederKey) continue
+      const lbl = feederLabel(line.feederKey, line.feederSize)
+      const cur = totals.get(lbl) ?? { qty: 0, cost: 0 }
+      totals.set(lbl, { qty: cur.qty + lineMonthlyQty(line), cost: cur.cost + lineMonthlyCost(line) })
+    }
+  }
 
-  // Sort summary lines by catalog group order
-  const summaryLines: { label: string; qty: number; cost: number }[] = []
-  for (const group of FEEDER_GROUPS) {
-    for (const key of group.keys) {
-      const cat = FEEDER_CATALOG[key]
-      if (!cat) continue
-      if (cat.sizes?.length) {
-        for (const sz of cat.sizes) {
-          const lbl = `${sz} ${cat.label}`
-          const row = feederTotals.get(lbl)
-          if (row) summaryLines.push({ label: lbl, qty: row.qty, cost: row.cost })
-        }
-      } else {
-        const row = feederTotals.get(cat.label)
-        if (row) summaryLines.push({ label: cat.label, qty: row.qty, cost: row.cost })
+  const summaryLines = buildSortedSummary(totals)
+  const supplierGroups = [...new Set(summaryLines.map(l => l.groupLabel))]
+
+  let grandTotal = 0
+  const anyCosts = summaryLines.some(l => l.cost > 0)
+
+  for (const groupName of supplierGroups) {
+    const lines = summaryLines.filter(l => l.groupLabel === groupName)
+    if (!lines.length) continue
+    if (y > 255) { doc.addPage(); y = 20 }
+
+    // Group header
+    const groupEmoji = lines[0].groupEmoji
+    doc.setFillColor(...C.dark)
+    doc.rect(margin - 2, y - 4, rightEdge - margin + 4, 9, 'F')
+    doc.setTextColor(...C.emerald); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5)
+    doc.text(`${groupEmoji}  ${groupName.toUpperCase()}`, margin, y)
+    y += 9
+
+    // Column headers
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...C.mid)
+    doc.text('Feeder', margin + 2, y)
+    doc.text('Monthly Qty', margin + 120, y)
+    if (anyCosts) doc.text('Est. Cost', margin + 155, y)
+    y += 3.5
+    doc.setDrawColor(...C.light); doc.line(margin, y, rightEdge, y); y += 5
+
+    let groupCost = 0
+    for (const line of lines) {
+      if (y > 272) { doc.addPage(); y = 20 }
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...C.fg)
+      doc.text(line.label, margin + 2, y)
+
+      // Large quantity display
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...C.emerald)
+      doc.text(line.qty.toString(), margin + 120, y)
+      doc.setFontSize(7.5); doc.setTextColor(...C.mid)
+      doc.text('units', margin + 132, y)
+
+      if (anyCosts && line.cost > 0) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...C.mid)
+        doc.text(`$${line.cost.toFixed(2)}`, margin + 155, y)
+        groupCost += line.cost
       }
+
+      doc.setDrawColor(235, 235, 235); doc.line(margin, y + 3, rightEdge, y + 3)
+      y += 9
     }
-  }
-  for (const [label, row] of feederTotals) {
-    if (!summaryLines.find(l => l.label === label))
-      summaryLines.push({ label, qty: row.qty, cost: row.cost })
+
+    if (anyCosts && groupCost > 0) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C.mid)
+      doc.text(`${groupName} subtotal: $${groupCost.toFixed(2)}`, rightEdge, y, { align: 'right' })
+      grandTotal += groupCost
+      y += 6
+    }
+
+    y += 4
   }
 
-  let totalCost = 0
-  doc.setFontSize(9.5)
-  for (const line of summaryLines) {
-    if (y > 275) { doc.addPage(); y = 20 }
-    doc.setFont('helvetica', 'bold'); doc.setTextColor(...rgb.fg)
-    doc.text(line.label, margin, y)
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(...rgb.mid)
-    doc.text(`${line.qty} units`, margin + 90, y)
-    if (line.cost > 0) {
-      doc.setTextColor(...rgb.emerald)
-      doc.text(`$${line.cost.toFixed(2)}`, margin + 125, y)
-      totalCost += line.cost
-    }
-    y += 7
-  }
-
-  if (totalCost > 0) {
-    y += 2
-    doc.setDrawColor(...rgb.light); doc.line(margin, y, margin + 145, y); y += 6
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...rgb.emerald)
-    doc.text(`Estimated Monthly Total: $${totalCost.toFixed(2)}`, margin, y)
+  // Grand total
+  if (anyCosts && grandTotal > 0) {
+    if (y > 265) { doc.addPage(); y = 20 }
+    doc.setDrawColor(...C.emerald); doc.setLineWidth(0.5)
+    doc.line(margin, y, rightEdge, y); doc.setLineWidth(0.2); y += 8
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...C.emerald)
+    doc.text(`Estimated Monthly Total: $${grandTotal.toFixed(2)}`, margin, y)
   }
 
   const blob = doc.output('blob')
   return URL.createObjectURL(blob)
 }
 
-// ── PDF Preview Overlay ───────────────────────────────────────────────────────
+// ── PDF Ready Overlay ─────────────────────────────────────────────────────────
 
-function PdfPreview({ blobUrl, onClose }: { blobUrl: string; onClose: () => void }) {
+function PdfReady({ blobUrl, onClose }: { blobUrl: string; onClose: () => void }) {
   const filename = `vivtrack-feeding-order-${new Date().toISOString().slice(0, 10)}.pdf`
   return (
-    <div className="fixed inset-0 z-[80] bg-gray-950 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800 shrink-0">
-        <span className="font-semibold text-gray-100 text-sm">Monthly Feeding Order</span>
-        <div className="flex items-center gap-2">
-          <a href={blobUrl} download={filename}
-            className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 border border-emerald-500/40 rounded-lg px-3 py-1.5 hover:bg-emerald-500/10 transition-colors">
-            <Download size={14} /> Save PDF
-          </a>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 p-1 transition-colors">
-            <X size={20} />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-[80] bg-gray-950/95 flex flex-col items-center justify-center px-6">
+      <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-200 p-2">
+        <X size={22} />
+      </button>
+
+      <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-5">
+        <FileText size={32} className="text-emerald-400" />
       </div>
-      <iframe src={blobUrl} className="flex-1 w-full border-0" title="Feeding Order PDF" />
+
+      <h2 className="text-xl font-bold text-gray-100 mb-1">PDF Ready</h2>
+      <p className="text-sm text-gray-500 text-center mb-2">
+        Two sections: your feeding chart + a clean supplier order form.
+      </p>
+      <p className="text-xs text-gray-600 text-center mb-8">
+        Supplier order is sorted by feeder type so your supplier can pick each feeder together.
+      </p>
+
+      <div className="w-full max-w-xs space-y-3">
+        <button
+          onClick={() => window.open(blobUrl, '_blank')}
+          className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-bold rounded-2xl flex items-center justify-center gap-2.5 transition-all text-sm">
+          <ExternalLink size={18} /> Open PDF
+        </button>
+        <a href={blobUrl} download={filename}
+          className="w-full py-3.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 font-semibold rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm">
+          <Download size={16} /> Download PDF
+        </a>
+      </div>
     </div>
   )
 }
@@ -792,10 +838,7 @@ export default function FeedingCalculator() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   useEffect(() => { saveEntries(entries) }, [entries])
-
-  useEffect(() => {
-    return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }
-  }, [pdfUrl])
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl) }, [pdfUrl])
 
   const upsertEntry = useCallback((entry: CalcEntry) => {
     setEntries(prev => {
@@ -814,14 +857,8 @@ export default function FeedingCalculator() {
     setExporting(true)
     try {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl)
-      const url = await generatePDF(entries)
-      setPdfUrl(url)
+      setPdfUrl(await generatePDF(entries))
     } finally { setExporting(false) }
-  }
-
-  const closePdf = () => {
-    if (pdfUrl) URL.revokeObjectURL(pdfUrl)
-    setPdfUrl(null)
   }
 
   const grouped = useMemo(() => {
@@ -845,8 +882,11 @@ export default function FeedingCalculator() {
     return map
   }, [entries])
 
+  const sortedSummary = useMemo(() => buildSortedSummary(feederTotals), [feederTotals])
+  const summaryGroups = useMemo(() => [...new Set(sortedSummary.map(l => l.groupLabel))], [sortedSummary])
+
   const totalMonthlyCost = useMemo(() =>
-    [...feederTotals.values()].reduce((s, v) => s + v.cost, 0), [feederTotals])
+    sortedSummary.reduce((s, l) => s + l.cost, 0), [sortedSummary])
 
   const existingAppIds = useMemo(() =>
     new Set(entries.map(e => e.appAnimalId).filter(Boolean) as string[]), [entries])
@@ -859,7 +899,7 @@ export default function FeedingCalculator() {
     <div className="min-h-full pb-24">
       <div className="px-4 pt-6 pb-4">
         <h1 className="text-2xl font-bold text-gray-100">Feeding Calculator</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Monthly feeder needs &amp; estimated costs</p>
+        <p className="text-sm text-gray-500 mt-0.5">Monthly feeder needs &amp; costs</p>
       </div>
 
       <div className="px-4 flex gap-2 mb-4">
@@ -890,112 +930,118 @@ export default function FeedingCalculator() {
         </div>
       )}
 
-      {/* Animal list */}
       {entries.length > 0 && (
         <div className="px-4 space-y-4 mb-4">
-          {SPECIES_ORDER.filter(t => grouped.has(t)).map(type => {
-            const items = grouped.get(type)!
-            return (
-              <div key={type}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">{SPECIES_EMOJI[type]}</span>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{SPECIES_LABEL[type]}</p>
-                  <div className="flex-1 h-px bg-gray-800" />
-                  <span className="text-xs text-gray-600">{items.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {items.map(entry => {
-                    const cost = entryMonthlyCost(entry)
-                    const hasValidFeeders = entry.feeders.some(f => f.feederKey)
-                    const missingFeeders = entry.feeders.length === 0 ||
-                      entry.feeders.some(f => !f.feederKey || (FEEDER_CATALOG[f.feederKey]?.sizes?.length && !f.feederSize))
+          {SPECIES_ORDER.filter(t => grouped.has(t)).map(type => (
+            <div key={type}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-base">{SPECIES_EMOJI[type]}</span>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{SPECIES_LABEL[type]}</p>
+                <div className="flex-1 h-px bg-gray-800" />
+                <span className="text-xs text-gray-600">{grouped.get(type)!.length}</span>
+              </div>
+              <div className="space-y-2">
+                {grouped.get(type)!.map(entry => {
+                  const cost = entryMonthlyCost(entry)
+                  const hasValid = entry.feeders.some(f => f.feederKey)
+                  const missing = entry.feeders.length === 0 ||
+                    entry.feeders.some(f => !f.feederKey || (FEEDER_CATALOG[f.feederKey]?.sizes?.length && !f.feederSize))
 
-                    return (
-                      <div key={entry.id}
-                        className={cn('bg-gray-900 border rounded-xl px-4 py-3',
-                          missingFeeders ? 'border-amber-500/30' : 'border-gray-800'
-                        )}>
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold text-gray-100 truncate">{entry.name}</p>
-                              {missingFeeders && <AlertCircle size={13} className="text-amber-400 shrink-0" />}
-                            </div>
-                            <p className="text-xs text-gray-500 truncate">{entry.species}</p>
+                  return (
+                    <div key={entry.id} className={cn('bg-gray-900 border rounded-xl px-4 py-3', missing ? 'border-amber-500/30' : 'border-gray-800')}>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-gray-100 truncate">{entry.name}</p>
+                            {missing && <AlertCircle size={13} className="text-amber-400 shrink-0" />}
                           </div>
-                          {hasValidFeeders && cost > 0 && (
-                            <div className="text-right shrink-0">
-                              <p className="text-xs text-gray-500">est./mo</p>
-                              <p className="text-sm font-bold text-emerald-400">${cost.toFixed(2)}</p>
-                            </div>
-                          )}
+                          <p className="text-xs text-gray-500 truncate">{entry.species}</p>
                         </div>
-
-                        {/* Feeder lines */}
-                        {entry.feeders.length === 0 ? (
-                          <p className="text-xs text-amber-400 mb-2">No feeders added — tap Edit</p>
-                        ) : (
-                          <div className="space-y-1 mb-2">
-                            {entry.feeders.map(line => {
-                              const lbl = line.feederKey ? feederLabel(line.feederKey, line.feederSize) : '(feeder not set)'
-                              const missingSize = line.feederKey && FEEDER_CATALOG[line.feederKey]?.sizes?.length && !line.feederSize
-                              const freqStr = line.feedingFrequency === 'every_x_days'
-                                ? `every ${line.feedingIntervalDays}d`
-                                : FREQ_LABEL[line.feedingFrequency].toLowerCase()
-                              return (
-                                <div key={line.id} className="flex items-center justify-between">
-                                  <span className={cn('text-xs', missingSize || !line.feederKey ? 'text-amber-400' : 'text-gray-400')}>
-                                    {line.feederKey ? `${line.feederAmount}× ` : ''}{lbl}
-                                    {missingSize ? ' (size not set)' : ''}
-                                    {line.feederKey && !missingSize && <span className="text-gray-600"> · {freqStr}</span>}
-                                  </span>
-                                  {line.feederKey && !missingSize && (
-                                    <span className="text-xs font-semibold text-emerald-400 ml-2 shrink-0">
-                                      {lineMonthlyQty(line)}/mo
-                                    </span>
-                                  )}
-                                </div>
-                              )
-                            })}
+                        {hasValid && cost > 0 && (
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-gray-500">est./mo</p>
+                            <p className="text-sm font-bold text-emerald-400">${cost.toFixed(2)}</p>
                           </div>
                         )}
-
-                        <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
-                          <button onClick={() => { setEditEntry(entry); setSheet('add') }}
-                            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
-                            <Pencil size={12} /> Edit
-                          </button>
-                          <button onClick={() => setDeleteId(entry.id)}
-                            className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors ml-auto">
-                            <Trash2 size={12} /> Remove
-                          </button>
-                        </div>
                       </div>
-                    )
-                  })}
+
+                      {entry.feeders.length === 0 ? (
+                        <p className="text-xs text-amber-400 mb-2">No feeders added — tap Edit</p>
+                      ) : (
+                        <div className="space-y-0.5 mb-2">
+                          {entry.feeders.map(line => {
+                            const lbl = line.feederKey ? feederLabel(line.feederKey, line.feederSize) : '(feeder not set)'
+                            const missingSize = line.feederKey && FEEDER_CATALOG[line.feederKey]?.sizes?.length && !line.feederSize
+                            const freqStr = line.feedingFrequency === 'every_x_days'
+                              ? `every ${line.feedingIntervalDays}d`
+                              : FREQ_LABEL[line.feedingFrequency].toLowerCase()
+                            const bad = !line.feederKey || missingSize
+                            return (
+                              <div key={line.id} className="flex items-center justify-between">
+                                <span className={cn('text-xs', bad ? 'text-amber-400' : 'text-gray-400')}>
+                                  {line.feederKey ? `${line.feederAmount}× ` : ''}{lbl}
+                                  {missingSize ? ' — size not set' : ''}
+                                  {!bad && <span className="text-gray-600"> · {freqStr}</span>}
+                                </span>
+                                {!bad && (
+                                  <span className="text-xs font-semibold text-emerald-400 ml-2 shrink-0">
+                                    {lineMonthlyQty(line)}/mo
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
+                        <button onClick={() => { setEditEntry(entry); setSheet('add') }}
+                          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
+                          <Pencil size={12} /> Edit
+                        </button>
+                        <button onClick={() => setDeleteId(entry.id)}
+                          className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors ml-auto">
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Monthly Summary — organized by catalog group */}
+      {sortedSummary.length > 0 && (
+        <div className="mx-4 mb-4 bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Monthly Order Summary</p>
+          <p className="text-[11px] text-gray-600 mb-3">Sorted by feeder type — same as supplier order</p>
+
+          {summaryGroups.map(groupName => {
+            const lines = sortedSummary.filter(l => l.groupLabel === groupName)
+            const emoji = lines[0].groupEmoji
+            return (
+              <div key={groupName} className="mb-3">
+                <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                  <span>{emoji}</span> {groupName}
+                </p>
+                <div className="space-y-1">
+                  {lines.map(line => (
+                    <div key={line.label} className="flex items-center justify-between pl-4">
+                      <span className="text-sm text-gray-200 truncate flex-1 mr-3">{line.label}</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-sm font-bold text-emerald-400">{line.qty}</span>
+                        {line.cost > 0 && <span className="text-xs text-gray-500">${line.cost.toFixed(2)}</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )
           })}
-        </div>
-      )}
 
-      {/* Monthly Summary */}
-      {feederTotals.size > 0 && (
-        <div className="mx-4 mb-4 bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Monthly Order Summary</p>
-          <p className="text-[11px] text-gray-600 mb-3">Same feeder &amp; size bundled together</p>
-          <div className="space-y-2">
-            {[...feederTotals.entries()].map(([feeder, { qty, cost }]) => (
-              <div key={feeder} className="flex items-center justify-between">
-                <span className="text-sm text-gray-200 truncate flex-1 mr-3">{feeder}</span>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm font-bold text-emerald-400">{qty}</span>
-                  {cost > 0 && <span className="text-xs text-gray-500">${cost.toFixed(2)}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
           {totalMonthlyCost > 0 && (
             <>
               <div className="h-px bg-gray-800 my-3" />
@@ -1013,14 +1059,13 @@ export default function FeedingCalculator() {
           <button onClick={handleExport} disabled={exporting}
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-60 border border-gray-700 text-gray-200 text-sm font-semibold rounded-xl transition-colors">
             {exporting
-              ? <><div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> Generating PDF…</>
-              : <><FileText size={16} /> Preview &amp; Export PDF</>
+              ? <><div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />Generating PDF…</>
+              : <><FileText size={16} />Generate PDF</>
             }
           </button>
         </div>
       )}
 
-      {/* Delete confirm */}
       {deleteId && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={() => setDeleteId(null)} />
@@ -1038,18 +1083,12 @@ export default function FeedingCalculator() {
       )}
 
       {sheet === 'add' && (
-        <EntryForm
-          initial={editEntry}
-          onSave={upsertEntry}
-          onClose={() => { setSheet(null); setEditEntry(undefined) }}
-        />
+        <EntryForm initial={editEntry} onSave={upsertEntry} onClose={() => { setSheet(null); setEditEntry(undefined) }} />
       )}
-
       {sheet === 'import' && (
         <ImportSheet existingIds={existingAppIds} onImport={handleImport} onClose={() => setSheet(null)} />
       )}
-
-      {pdfUrl && <PdfPreview blobUrl={pdfUrl} onClose={closePdf} />}
+      {pdfUrl && <PdfReady blobUrl={pdfUrl} onClose={() => { URL.revokeObjectURL(pdfUrl); setPdfUrl(null) }} />}
     </div>
   )
 }
