@@ -29,6 +29,7 @@ const Settings = lazy(() => import('@/pages/Settings'))
 const PhotoLibrary = lazy(() => import('@/pages/Photos'))
 const Tasks = lazy(() => import('@/pages/Tasks'))
 const About = lazy(() => import('@/pages/About'))
+const FeedingCalculator = lazy(() => import('@/pages/FeedingCalculator'))
 
 function PageLoader() {
   return (
@@ -127,6 +128,9 @@ function AppRoutes() {
           } />
           <Route path="about" element={
             <Suspense fallback={<PageLoader />}><About /></Suspense>
+          } />
+          <Route path="feeding-calculator" element={
+            <Suspense fallback={<PageLoader />}><FeedingCalculator /></Suspense>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
