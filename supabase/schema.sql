@@ -204,8 +204,10 @@ create table if not exists public.profiles (
 alter table public.profiles enable row level security;
 create policy "Users read own profile" on public.profiles
   for select using (auth.uid() = user_id);
-create policy "Users update own profile" on public.profiles
-  for update using (auth.uid() = user_id);
+-- No update policy on purpose: subscription_tier lives on this row, so a user who
+-- could update it could give themselves Pro. Tiers are set only by the payment
+-- webhooks (service role) and redeem_promo_code() (security definer).
+revoke insert, update, delete on public.profiles from anon, authenticated;
 
 -- Promo codes table
 drop policy if exists "Authenticated users can check codes" on public.promo_codes;
@@ -219,12 +221,12 @@ create table if not exists public.promo_codes (
   created_at timestamptz default now()
 );
 alter table public.promo_codes enable row level security;
-create policy "Authenticated users can check codes" on public.promo_codes
-  for select to authenticated using (is_active = true);
+-- No policies: nobody may read the codes. redeem_promo_code() checks them as definer.
+revoke all on public.promo_codes from anon, authenticated;
 
 -- Auto-create profile when a new user signs up
 create or replace function public.create_user_profile()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into public.profiles (user_id) values (new.id) on conflict (user_id) do nothing;
   return new;
@@ -237,7 +239,7 @@ create trigger on_auth_user_created
 
 -- Promo code redemption (runs server-side with elevated privileges)
 create or replace function public.redeem_promo_code(p_code text)
-returns json language plpgsql security definer as $$
+returns json language plpgsql security definer set search_path = public as $$
 declare
   v_code public.promo_codes%rowtype;
   v_user_id uuid;
@@ -291,7 +293,7 @@ create or replace function public.update_ls_subscription(
   p_is_trialing boolean default false,
   p_expires_at timestamptz default null
 )
-returns void language plpgsql security definer as $$
+returns void language plpgsql security definer set search_path = public as $$
 begin
   update public.profiles set
     subscription_tier = p_tier,
@@ -303,12 +305,16 @@ begin
   where ls_customer_id = p_ls_customer_id;
 end;
 $$;
+-- Admin only: Postgres grants EXECUTE to everyone by default, which would let any
+-- visitor change any customer's tier.
+revoke execute on function public.update_ls_subscription(text, text, text, text, boolean, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.update_ls_subscription(text, text, text, text, boolean, timestamptz)
+  to service_role;
 
--- Seed sample promo codes (safe to re-run)
-insert into public.promo_codes (code, description, is_active, max_uses) values
-  ('VIVTRACK_BETA', 'Beta tester — unlimited pro access', true, null),
-  ('FOUNDER2026', 'Founder access — first 50 users', true, 50)
-on conflict (code) do nothing;
+-- Promo codes are NOT seeded here: this file is public. Create them in the
+-- Supabase SQL editor, e.g.
+--   insert into public.promo_codes (code, description, max_uses) values ('<CODE>', '<what>', 10);
 
 -- Enable realtime (ignore if already added)
 do $$ begin alter publication supabase_realtime add table public.animals; exception when others then null; end $$;
